@@ -38,12 +38,12 @@ realizzazione di un file system in cui un singolo file _append-only_ dovrebbe
 registrare la seguente tupla di dati (per riga del file) ogni volta che viene
 tentato di aprire un percorso del file system protetto in modalità scrittura:
 
-    - l'ID del processo TGID
-    - l'ID del thread
-    - l'ID utente
-    - l'ID utente effettivo
-    - il percorso del programma che sta attualmente tentando l'apertura
-    - un hash crittografico del contenuto del file del programma
+- l'ID del processo TGID
+- l'ID del thread
+- l'ID utente
+- l'ID utente effettivo
+- il percorso del programma che sta attualmente tentando l'apertura
+- un hash crittografico del contenuto del file del programma
 
 Il calcolo dell'hash crittografico e la scrittura della tupla sopra indicata
 dovrebbero essere eseguiti come lavoro differito.
