@@ -6,9 +6,9 @@ Questa specifica riguarda un Modulo del Kernel Linux (LKM) che implementa un
 monitor di riferimento per la protezione dei file. Il monitor di riferimento può
 trovarsi in uno dei seguenti quattro stati:
 
-    - OFF: significa che le sue operazioni sono attualmente disabilitate;
-    - ON: significa che le sue operazioni sono attualmente abilitate;
-    - REC-ON/REC-OFF: significa che può essere attualmente riconfigurato (sia in modalità ON che OFF).
+- OFF: significa che le sue operazioni sono attualmente disabilitate;
+- ON: significa che le sue operazioni sono attualmente abilitate;
+- REC-ON/REC-OFF: significa che può essere attualmente riconfigurato (sia in modalità ON che OFF).
 
 La configurazione del monitor di riferimento si basa su un insieme di percorsi
 del file system. Ogni percorso corrisponde a un file/directory che al momento
