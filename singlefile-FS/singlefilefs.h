@@ -49,12 +49,12 @@ struct onefilefs_sb_info {
 	uint64_t free_blocks;//not exploited
 
 	//padding to fit into a single block
-	char padding[ (4 * 1024) - (5 * sizeof(uint64_t))];
+	char padding[ DEFAULT_BLOCK_SIZE - (5 * sizeof(uint64_t))];
 };
 
 // file.c
 extern const struct inode_operations onefilefs_inode_ops;
-extern const struct file_operations onefilefs_file_operations; 
+extern const struct file_operations onefilefs_file_operations;
 
 // dir.c
 extern const struct file_operations onefilefs_dir_operations;

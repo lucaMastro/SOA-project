@@ -22,7 +22,6 @@ ssize_t onefilefs_read(struct file * filp, char __user * buf, size_t len, loff_t
     loff_t offset;
     int block_to_read;//index of the block to be read from device
 
-    printk("%s: pointer filp: %p", MOD_NAME, filp);
     printk("%s: read operation called with len %ld - and offset %lld (the current file size is %lld)",MOD_NAME, len, *off, file_size);
 
     //this operation is not synchronized
@@ -123,21 +122,10 @@ ssize_t onefilefs_write(struct file * filp, const char __user * buf, size_t len,
     loff_t offset;
     int block_to_write; // index of the block to be written from device
 
-
-    printk("%s: pointer filp: %p", MOD_NAME, filp);
     printk("%s: write operation called with len %ld - and offset %lld (the current file size is %lld)",MOD_NAME, len, *off, file_size);
-
-    //this operation is not synchronized
-    //*off can be changed concurrently
-    //add synchronization if you need it for any reason
 
     //determine the block level offset for the operation
     offset = file_size % DEFAULT_BLOCK_SIZE;
-
-    // @TODO: what if write across 2 (or more) blocks?
-    //just read stuff in a single block - residuals will be managed at the applicatin level
-    //if (offset + len > DEFAULT_BLOCK_SIZE)
-    //    len = DEFAULT_BLOCK_SIZE - offset;
 
     //compute the actual index of the the block to be written from device
     block_to_write = file_size / DEFAULT_BLOCK_SIZE + 2; //the value 2 accounts for superblock and file-inode on device
@@ -148,7 +136,6 @@ ssize_t onefilefs_write(struct file * filp, const char __user * buf, size_t len,
     if(!bh)
         return -EIO;
 
-    printk("%s: i_read_size: %lld, inode-> size: %lld",MOD_NAME, file_size,the_inode->i_size);
     ret = copy_from_user(bh->b_data + file_size, buf, len);
     brelse(bh);
 
@@ -156,7 +143,6 @@ ssize_t onefilefs_write(struct file * filp, const char __user * buf, size_t len,
     file_size += len - ret;
     // also on the inode
     i_size_write(the_inode, file_size);
-    printk("%s: new_size: %lld",MOD_NAME, file_size);
     return len - ret;
 }
 
