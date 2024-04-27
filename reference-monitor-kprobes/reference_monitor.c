@@ -46,14 +46,12 @@ static reference_monitor_t reference_monitor;
 const char *dmesg_path="/run/log/journal/34806022a1ad45778b55aa795580cc74/system.journal";
 
 struct open_flags {
-	void* buffer;
 	int open_flag;
 	umode_t mode;
 	int acc_mode;
 	int intent;
 	int lookup_flags;
 };
-
 
 static int sys_open_wrapper(struct kprobe *ri, struct pt_regs *regs){
 

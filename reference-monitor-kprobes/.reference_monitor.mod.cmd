@@ -1,0 +1,1 @@
+cmd_/home/luca/Scrivania/shared/reference-monitor-kprobes/reference_monitor.mod := { echo  /home/luca/Scrivania/shared/reference-monitor-kprobes/reference_monitor.o;  echo; } > /home/luca/Scrivania/shared/reference-monitor-kprobes/reference_monitor.mod
