@@ -33,6 +33,7 @@ MODULE_AUTHOR("Francesco Quaglia <francesco.quaglia@uniroma2.it>");
 MODULE_DESCRIPTION("see the README file");
 
 #define MODNAME "Reference monitor"
+#define PASS_FILE "/home/luca/Scrivania/shared/hash_sha256.bin"
 
 
 
@@ -113,16 +114,54 @@ static int sys_open_wrapper(struct kprobe *ri, struct pt_regs *regs){
 }
 
 
+
 static int add_path(const char *new_path){
     reference_monitor.paths_len++;
-    reference_monitor.paths = krealloc(reference_monitor.paths, (reference_monitor.paths_len + 1) * sizeof(char *), GFP_KERNEL);
+    reference_monitor.paths = krealloc(reference_monitor.paths, (reference_monitor.paths_len) * sizeof(char *), GFP_KERNEL);
+
+    if (reference_monitor.paths == NULL)
+        printk("%s: error allocating memory for paths.", MODNAME);
+
     reference_monitor.paths[reference_monitor.paths_len - 1] = kmalloc(strlen(new_path), GFP_KERNEL);
-    // always a more element
-    reference_monitor.paths[reference_monitor.paths_len] = NULL;
+    if (reference_monitor.paths[reference_monitor.paths_len - 1] == NULL)
+        printk("%s: error allocating memory for new path.", MODNAME);
+
     strcpy(reference_monitor.paths[reference_monitor.paths_len - 1], new_path);
     return 0;
 }
 
+static int read_pass_file(void){
+    ssize_t bytes_read;
+    struct file * f = NULL;
+    // starting position
+    loff_t pos = 0;
+
+
+    // open the file for reading it
+    f = filp_open(PASS_FILE, O_RDONLY, 0);
+    if (IS_ERR(f)) {
+        printk("%s: error opening password file", MODNAME);
+        return -1;
+    }
+
+    char *read_buffer = kmalloc(32, GFP_KERNEL);
+    if (!read_buffer) {
+        // Gestione dell'errore se l'allocazione di memoria fallisce
+        printk("%s: error allocating buffer", MODNAME);
+        filp_close(f, NULL);
+        return -1;
+    }
+    //bytes_read = vfs_read(f, reference_monitor.hashed_pass, 30, &pos);
+    bytes_read = kernel_read(f, read_buffer, 32, &pos);
+    if (bytes_read < 0) {
+        printk("%s: error reading password file", MODNAME);
+        filp_close(f, NULL);
+        return -1;
+    }
+
+    filp_close(f, NULL);
+    return 0;
+}
 
 static struct kprobe kp = {
     .symbol_name = target_func,
@@ -142,9 +181,20 @@ static int init_reference_monitor(void) {
 
     // init reference_monitor struct
     reference_monitor.state = ON;
-    reference_monitor.paths_len = 0;
-    reference_monitor.paths = kmalloc( (reference_monitor.paths_len + 1) * sizeof(char *), GFP_KERNEL);
-    reference_monitor.paths[reference_monitor.paths_len + 1] = NULL;
+    reference_monitor.paths_len = 1;
+    reference_monitor.paths = kmalloc( (reference_monitor.paths_len) * sizeof(char *), GFP_KERNEL);
+
+    reference_monitor.paths[reference_monitor.paths_len - 1] = kmalloc(strlen(PASS_FILE), GFP_KERNEL);
+    if (reference_monitor.paths[reference_monitor.paths_len - 1] == NULL)
+        printk("%s: error allocating memory for initial path: %s", MODNAME, PASS_FILE);
+
+    strcpy(reference_monitor.paths[reference_monitor.paths_len - 1], PASS_FILE);
+
+    // init the password:
+    ret = read_pass_file();
+    if (ret < 0) {
+        return ret;
+    }
 
     printk("%s: adding dummy path to module: /home/luca/Scrivania/prova.txt",MODNAME);
     add_path("/home/luca/Scrivania/prova.txt");
@@ -159,6 +209,7 @@ static void exit_reference_monitor(void) {
     //Be carefull, this unregister assumes that none will need to run the hook function after this nodule
     //is unmounted
     printk("%s: hook module unloaded", MODNAME);
+    kfree(reference_monitor.paths);
 }
 module_init(init_reference_monitor);
 module_exit(exit_reference_monitor);
