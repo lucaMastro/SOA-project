@@ -56,7 +56,7 @@ struct open_flags {
 
 static int sys_open_wrapper(struct kprobe *ri, struct pt_regs *regs){
 
-    // parsing parametersG
+    // parsing parameters
     int dfd = (int) regs -> di;
     struct filename *file_name =(struct filename*) regs -> si;
     struct open_flags *op = (struct open_flags*) (regs -> dx);
@@ -136,7 +136,6 @@ static int read_pass_file(void){
     // starting position
     loff_t pos = 0;
 
-
     // open the file for reading it
     f = filp_open(PASS_FILE, O_RDONLY, 0);
     if (IS_ERR(f)) {
@@ -144,15 +143,7 @@ static int read_pass_file(void){
         return -1;
     }
 
-    char *read_buffer = kmalloc(32, GFP_KERNEL);
-    if (!read_buffer) {
-        // Gestione dell'errore se l'allocazione di memoria fallisce
-        printk("%s: error allocating buffer", MODNAME);
-        filp_close(f, NULL);
-        return -1;
-    }
-    //bytes_read = vfs_read(f, reference_monitor.hashed_pass, 30, &pos);
-    bytes_read = kernel_read(f, read_buffer, 32, &pos);
+    bytes_read = kernel_read(f, reference_monitor.hashed_pass, 32, &pos);
     if (bytes_read < 0) {
         printk("%s: error reading password file", MODNAME);
         filp_close(f, NULL);
