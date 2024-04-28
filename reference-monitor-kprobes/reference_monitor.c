@@ -19,6 +19,24 @@
 #include <asm/apic.h>
 #include <linux/syscalls.h>
 #include <linux/string.h>
+#include <linux/crypto.h>
+#include <crypto/hash.h>
+
+
+#include <linux/namei.h>
+#include <crypto/skcipher.h>
+#include <linux/scatterlist.h>
+#include <linux/fs_struct.h>
+#include <linux/mm_types.h>
+
+
+
+
+
+
+
+
+
 
 #include "lib/reference_monitor.h"
 #include "lib/deferred_work.h"
@@ -33,11 +51,10 @@ MODULE_AUTHOR("Francesco Quaglia <francesco.quaglia@uniroma2.it>");
 MODULE_DESCRIPTION("see the README file");
 
 #define MODNAME "Reference monitor"
-#define PASS_FILE "/home/luca/Scrivania/shared/hash_sha256.bin"
+#define PASS_FILE "/home/luca/Scrivania/shared/hash_sha256"
 
 
 
-char *black_list[] = {"/home/luca/Scrivania/prova.txt", NULL ,"su", NULL}; //the list of programs root cannot use to spawn others - being root is still admitted excluding 'su' from the list
 
 
 static reference_monitor_t reference_monitor;
@@ -54,6 +71,39 @@ struct open_flags {
 	int lookup_flags;
 };
 
+
+
+char* get_full_path(int dfd, char *user_path) {
+	struct path path_struct;
+	char *tpath;
+	char *path;
+	int flag;
+    int ret;
+	unsigned int lookup_flags;
+
+	tpath=kmalloc(MAX_LEN,GFP_KERNEL);
+	if(tpath == NULL)
+        return NULL;
+
+    lookup_flags = LOOKUP_FOLLOW;
+	ret = user_path_at(dfd, user_path, lookup_flags, &path_struct);
+	if(ret){
+		//printk("%s: error finding user full path for %s: %d", MODNAME, user_path, ret);
+		kfree(tpath);
+		return NULL;
+	}
+
+	path = d_path(&path_struct, tpath, MAX_LEN);
+	//kfree(tpath);
+	return path;
+}
+
+
+
+
+
+
+
 static int sys_open_wrapper(struct kprobe *ri, struct pt_regs *regs){
 
     // parsing parameters
@@ -68,15 +118,27 @@ static int sys_open_wrapper(struct kprobe *ri, struct pt_regs *regs){
     if (strcmp(dmesg_path, path) == 0)
         return 0;
 
-    int write_mode = (flags & O_WRONLY || flags & O_RDWR);
+    const char *usr_path = (const char*) file_name -> uptr;
+    // if not write mode, just return
+    if(!(flags & O_RDWR) && !(flags & O_WRONLY) )  return 0;
 
-	printk("%s: path: %s, dfd: %d; flags: %d, write_mode: %d;",MODNAME, path, dfd, flags, write_mode);
+
+    // getting full path:
+    char *full_path = get_full_path(dfd, usr_path);
+    if (full_path == NULL){
+        full_path = path;
+    }
+
 
     int i;
     char *curr_path;
     for (i = 0; i < reference_monitor.paths_len; i++){
         curr_path = reference_monitor.paths[i];
-        if (strcmp(path, curr_path) == 0 && write_mode){
+        if (strcmp(full_path, curr_path) == 0 ){
+
+
+            op -> open_flag = O_RDONLY;
+            regs -> dx = (unsigned long)op;
 	        printk("%s: path: %s will be rejected",MODNAME, path);
             return 0;
         }
@@ -115,16 +177,27 @@ static int sys_open_wrapper(struct kprobe *ri, struct pt_regs *regs){
 
 
 
+
+
+
+
+
 static int add_path(const char *new_path){
     reference_monitor.paths_len++;
     reference_monitor.paths = krealloc(reference_monitor.paths, (reference_monitor.paths_len) * sizeof(char *), GFP_KERNEL);
 
     if (reference_monitor.paths == NULL)
+    {
         printk("%s: error allocating memory for paths.", MODNAME);
+        return -1;
+    }
 
     reference_monitor.paths[reference_monitor.paths_len - 1] = kmalloc(strlen(new_path), GFP_KERNEL);
     if (reference_monitor.paths[reference_monitor.paths_len - 1] == NULL)
+    {
         printk("%s: error allocating memory for new path.", MODNAME);
+        return -1;
+    }
 
     strcpy(reference_monitor.paths[reference_monitor.paths_len - 1], new_path);
     return 0;
@@ -154,6 +227,44 @@ static int read_pass_file(void){
     return 0;
 }
 
+
+static int compute_hash(char *input_string, int input_size, char *output_buffer) {
+    struct crypto_shash *tfm;
+    struct shash_desc *desc;
+    int ret;
+
+    tfm = crypto_alloc_shash("sha256", 0, 0);
+    if (IS_ERR(tfm)) {
+        printk("%s: error initializing transform", MODNAME);
+        return PTR_ERR(tfm);
+    }
+
+    desc = kmalloc(sizeof(struct shash_desc) + crypto_shash_descsize(tfm), GFP_KERNEL);
+    if (desc == NULL) {
+        printk("%s: error initializing hash description", MODNAME);
+        crypto_free_shash(tfm);
+        return -ENOMEM;
+    }
+
+    desc->tfm = tfm;
+
+    ret = crypto_shash_digest(desc, input_string, input_size, output_buffer);
+    printk("%s: hash return: %d",MODNAME, ret);
+    if (ret < 0) {
+        printk("%s: error initializing hash computation", MODNAME);
+        kfree(desc);
+        crypto_free_shash(tfm);
+        return ret;
+    }
+
+    kfree(desc);
+    crypto_free_shash(tfm);
+
+    return 0;
+}
+
+
+
 static struct kprobe kp = {
     .symbol_name = target_func,
     .pre_handler = sys_open_wrapper,
@@ -163,10 +274,10 @@ static struct kprobe kp = {
 
 static int init_reference_monitor(void) {
 	int ret;
-	printk("%s: initializing\n",MODNAME);
+	printk("%s: initializing",MODNAME);
 	ret = register_kprobe(&kp);
     if (ret < 0) {
-        printk("%s: kprobe registering failed, returned %d\n",MODNAME,ret);
+        printk("%s: kprobe registering failed, returned %d",MODNAME,ret);
         return ret;
     }
 
@@ -174,21 +285,32 @@ static int init_reference_monitor(void) {
     reference_monitor.state = ON;
     reference_monitor.paths_len = 1;
     reference_monitor.paths = kmalloc( (reference_monitor.paths_len) * sizeof(char *), GFP_KERNEL);
-
-    reference_monitor.paths[reference_monitor.paths_len - 1] = kmalloc(strlen(PASS_FILE), GFP_KERNEL);
-    if (reference_monitor.paths[reference_monitor.paths_len - 1] == NULL)
-        printk("%s: error allocating memory for initial path: %s", MODNAME, PASS_FILE);
-
-    strcpy(reference_monitor.paths[reference_monitor.paths_len - 1], PASS_FILE);
+    if (reference_monitor.paths == NULL){
+        printk("%s: error initializing paths.",MODNAME);
+        return -1;
+    }
+    reference_monitor.paths[reference_monitor.paths_len - 1] = PASS_FILE;
 
     // init the password:
     ret = read_pass_file();
     if (ret < 0) {
+        printk("%s: error in reading pass file", MODNAME);
         return ret;
     }
 
+    /* char hash[32]; */
+    /* compute_hash("prova", 5, hash); */
+    /* char hex_hash[64]; */
+    /* bin2hex(hex_hash, hash, 32); */
+    /* printk("%s: hex_hash: %s",MODNAME, hex_hash); */
+    /* bin2hex(hex_hash, reference_monitor.hashed_pass, 32); */
+    /* printk("%s: hex_hash: %s",MODNAME, hex_hash); */
+
+
     printk("%s: adding dummy path to module: /home/luca/Scrivania/prova.txt",MODNAME);
     add_path("/home/luca/Scrivania/prova.txt");
+    printk_ratelimited("%s: done",MODNAME);
+
 
 	return 0;
 }
