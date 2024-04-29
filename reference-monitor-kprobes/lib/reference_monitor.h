@@ -12,5 +12,6 @@ typedef struct _reference_monitor_t {
     spinlock_t lock;
     char **paths;
     int paths_len;
+    int (*add_path)(const char *new_path);
 } reference_monitor_t;
 #endif

@@ -21,22 +21,13 @@
 #include <linux/string.h>
 #include <linux/crypto.h>
 #include <crypto/hash.h>
-
-
+#include <linux/unistd.h>
+#include <linux/syscalls.h>
 #include <linux/namei.h>
 #include <crypto/skcipher.h>
 #include <linux/scatterlist.h>
 #include <linux/fs_struct.h>
 #include <linux/mm_types.h>
-
-
-
-
-
-
-
-
-
 
 #include "lib/reference_monitor.h"
 #include "lib/deferred_work.h"
@@ -57,7 +48,7 @@ MODULE_DESCRIPTION("see the README file");
 
 
 
-static reference_monitor_t reference_monitor;
+reference_monitor_t reference_monitor;
 
 #define MAX_LEN 256
 
@@ -104,7 +95,7 @@ char* get_full_path(int dfd, char *user_path) {
 
 
 
-static int sys_open_wrapper(struct kprobe *ri, struct pt_regs *regs){
+int sys_open_wrapper(struct kprobe *ri, struct pt_regs *regs){
 
     // parsing parameters
     int dfd = (int) regs -> di;
@@ -139,7 +130,7 @@ static int sys_open_wrapper(struct kprobe *ri, struct pt_regs *regs){
 
             op -> open_flag = O_RDONLY;
             regs -> dx = (unsigned long)op;
-	        printk("%s: path: %s will be rejected",MODNAME, path);
+	        printk("%s: path: %s will be rejected\n",MODNAME, path);
             return 0;
         }
     }
@@ -176,26 +167,25 @@ static int sys_open_wrapper(struct kprobe *ri, struct pt_regs *regs){
 }
 
 
-
-
-
-
-
-
-static int add_path(const char *new_path){
+int add_path(const char *new_path){
+    /*
+        @TODO: check if already present into the list
+        @TODO: prevent adding the-file path
+        @TODO: convert new_path in absolute path if needed
+    */
     reference_monitor.paths_len++;
     reference_monitor.paths = krealloc(reference_monitor.paths, (reference_monitor.paths_len) * sizeof(char *), GFP_KERNEL);
 
     if (reference_monitor.paths == NULL)
     {
-        printk("%s: error allocating memory for paths.", MODNAME);
+        printk("%s: error allocating memory for paths.\n", MODNAME);
         return -1;
     }
 
     reference_monitor.paths[reference_monitor.paths_len - 1] = kmalloc(strlen(new_path), GFP_KERNEL);
     if (reference_monitor.paths[reference_monitor.paths_len - 1] == NULL)
     {
-        printk("%s: error allocating memory for new path.", MODNAME);
+        printk("%s: error allocating memory for new path.\n", MODNAME);
         return -1;
     }
 
@@ -212,13 +202,13 @@ static int read_pass_file(void){
     // open the file for reading it
     f = filp_open(PASS_FILE, O_RDONLY, 0);
     if (IS_ERR(f)) {
-        printk("%s: error opening password file", MODNAME);
+        printk("%s: error opening password file\n", MODNAME);
         return -1;
     }
 
     bytes_read = kernel_read(f, reference_monitor.hashed_pass, 32, &pos);
     if (bytes_read < 0) {
-        printk("%s: error reading password file", MODNAME);
+        printk("%s: error reading password file\n", MODNAME);
         filp_close(f, NULL);
         return -1;
     }
@@ -228,40 +218,7 @@ static int read_pass_file(void){
 }
 
 
-static int compute_hash(char *input_string, int input_size, char *output_buffer) {
-    struct crypto_shash *tfm;
-    struct shash_desc *desc;
-    int ret;
 
-    tfm = crypto_alloc_shash("sha256", 0, 0);
-    if (IS_ERR(tfm)) {
-        printk("%s: error initializing transform", MODNAME);
-        return PTR_ERR(tfm);
-    }
-
-    desc = kmalloc(sizeof(struct shash_desc) + crypto_shash_descsize(tfm), GFP_KERNEL);
-    if (desc == NULL) {
-        printk("%s: error initializing hash description", MODNAME);
-        crypto_free_shash(tfm);
-        return -ENOMEM;
-    }
-
-    desc->tfm = tfm;
-
-    ret = crypto_shash_digest(desc, input_string, input_size, output_buffer);
-    printk("%s: hash return: %d",MODNAME, ret);
-    if (ret < 0) {
-        printk("%s: error initializing hash computation", MODNAME);
-        kfree(desc);
-        crypto_free_shash(tfm);
-        return ret;
-    }
-
-    kfree(desc);
-    crypto_free_shash(tfm);
-
-    return 0;
-}
 
 
 
@@ -274,10 +231,10 @@ static struct kprobe kp = {
 
 static int init_reference_monitor(void) {
 	int ret;
-	printk("%s: initializing",MODNAME);
+	printk("%s: initializing\n",MODNAME);
 	ret = register_kprobe(&kp);
     if (ret < 0) {
-        printk("%s: kprobe registering failed, returned %d",MODNAME,ret);
+        printk("%s: kprobe registering failed, returned %d\n",MODNAME,ret);
         return ret;
     }
 
@@ -286,15 +243,16 @@ static int init_reference_monitor(void) {
     reference_monitor.paths_len = 1;
     reference_monitor.paths = kmalloc( (reference_monitor.paths_len) * sizeof(char *), GFP_KERNEL);
     if (reference_monitor.paths == NULL){
-        printk("%s: error initializing paths.",MODNAME);
+        printk("%s: error initializing paths.\n",MODNAME);
         return -1;
     }
     reference_monitor.paths[reference_monitor.paths_len - 1] = PASS_FILE;
+    reference_monitor.add_path = add_path;
 
     // init the password:
     ret = read_pass_file();
     if (ret < 0) {
-        printk("%s: error in reading pass file", MODNAME);
+        printk("%s: error in reading pass file\n", MODNAME);
         return ret;
     }
 
@@ -307,10 +265,9 @@ static int init_reference_monitor(void) {
     /* printk("%s: hex_hash: %s",MODNAME, hex_hash); */
 
 
-    printk("%s: adding dummy path to module: /home/luca/Scrivania/prova.txt",MODNAME);
-    add_path("/home/luca/Scrivania/prova.txt");
-    printk_ratelimited("%s: done",MODNAME);
-
+    /* printk("%s: adding dummy path to module: /home/luca/Scrivania/prova.txt",MODNAME); */
+    /* reference_monitor.add_path("/home/luca/Scrivania/prova.txt"); */
+    printk("%s: done\n",MODNAME);
 
 	return 0;
 }
@@ -321,8 +278,12 @@ static void exit_reference_monitor(void) {
     unregister_kprobe(&kp);
     //Be carefull, this unregister assumes that none will need to run the hook function after this nodule
     //is unmounted
-    printk("%s: hook module unloaded", MODNAME);
+    printk("%s: hook module unloaded\n", MODNAME);
     kfree(reference_monitor.paths);
 }
 module_init(init_reference_monitor);
 module_exit(exit_reference_monitor);
+
+
+EXPORT_SYMBOL(reference_monitor);
+
