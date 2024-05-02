@@ -64,73 +64,105 @@ struct open_flags {
 
 
 
-char* get_full_path(int dfd, char *user_path) {
-	struct path path_struct;
-	char *tpath;
-	char *path;
-	int flag;
-    int ret;
-	unsigned int lookup_flags;
 
-	tpath=kmalloc(MAX_LEN,GFP_KERNEL);
-	if(tpath == NULL)
-        return NULL;
+/* stack overflow:
+    https://stackoverflow.com/questions/61500432/relative-path-to-absolute-path-in-linux-kernel
+*/
 
-    lookup_flags = LOOKUP_FOLLOW;
-	ret = user_path_at(dfd, user_path, lookup_flags, &path_struct);
-	if(ret){
-		//printk("%s: error finding user full path for %s: %d", MODNAME, user_path, ret);
-		kfree(tpath);
-		return NULL;
-	}
+int get_user_full_path(const char *filename, ssize_t len, char *output_buffer){
+    struct path path;
+    int dfd=AT_FDCWD;
+    char *ret_ptr=NULL;
+    int error = -EINVAL,flag=0;
+    unsigned int lookup_flags = 0;
+    char *tpath=kmalloc(1024,GFP_KERNEL);
+    if ((flag & ~(AT_SYMLINK_NOFOLLOW | AT_NO_AUTOMOUNT)) != 0)
+    {
+        kfree(tpath);
+        return error;
+    }
+    if (!(flag & AT_SYMLINK_NOFOLLOW))
+        lookup_flags |= LOOKUP_FOLLOW;
 
-	path = d_path(&path_struct, tpath, MAX_LEN);
-	//kfree(tpath);
-	return path;
+    error = user_path_at(dfd, filename, lookup_flags, &path);
+    if (error)
+    {
+        kfree(tpath);
+        return error;
+    }
+    ret_ptr = d_path(&path, tpath, 1024);
+    sprintf(output_buffer, ret_ptr, strlen(ret_ptr));
+    kfree(tpath);
+    return 0;
 }
 
 
-
-
+/* char* get_absolute_path(const char *path, char *absolute_path) { */
+/*     int ret; */
+/*     struct path path_struct; */
+/*     //char *absolute_path = (char*) kmalloc(sizeof(char) * MAX_LEN,GFP_KERNEL); */
+/*     ret = kern_path(path, LOOKUP_FOLLOW, &path_struct); */
+/*     printk("%s: kern_path returned: %px; ret: %d\n",MODNAME, &path,ret); */
+/*     char *ap = d_path(&path_struct, absolute_path, MAX_LEN); */
+/*     printk("%s: d path returned: %px vs %px; %s\n",MODNAME, ap, absolute_path, ap); */
+/*     return ap; */
+/* } */
 
 
 
 int sys_open_wrapper(struct kprobe *ri, struct pt_regs *regs){
 
+    int i;
+    char *curr_path;
     // parsing parameters
-    int dfd = (int) regs -> di;
+    int dfd;
+    int flags;
+    const char *path;
+    const char *usr_path;
+    char full_path[MAX_LEN];
+    int ret;
+
     struct filename *file_name =(struct filename*) regs -> si;
     struct open_flags *op = (struct open_flags*) (regs -> dx);
 
-    int flags = op -> open_flag;
+    dfd = (int) regs -> di;
+    flags = op -> open_flag;
     //umode_t mode = op -> mode;
 
-    const char *path = (const char*) file_name -> name;
+    path = (const char*) file_name -> name;
     if (strcmp(dmesg_path, path) == 0)
         return 0;
 
-    const char *usr_path = (const char*) file_name -> uptr;
+    usr_path = (const char*) file_name -> uptr;
     // if not write mode, just return
     if(!(flags & O_RDWR) && !(flags & O_WRONLY) )  return 0;
 
+    /* printk("%s: name: %s && %px; uptr: %s && %px", MODNAME, path, path, usr_path, usr_path); */
 
     // getting full path:
-    char *full_path = get_full_path(dfd, usr_path);
-    if (full_path == NULL){
-        full_path = path;
+    ret = get_user_full_path(usr_path, strlen(usr_path), full_path);
+    /* ret = get_user_full_path(path, strlen(usr_path), full_path); */
+    if (ret < 0) {
+        /* printk("%s: error in get_user_full_path with name: %s and uptr %s\neuid: %d\n", MODNAME, path, usr_path, current->cred->euid.val); */
+        sprintf(full_path, path, strlen(path));
     }
 
+    /* printk("%s: ------------path: %s\n", MODNAME, full_path); */
+    /* printk("%s: name: %s, uptr: %s\n", MODNAME, path, usr_path); */
 
-    int i;
-    char *curr_path;
+    /* struct path path_struct; */
+    /* //char *absolute_path = (char*) kmalloc(sizeof(char) * MAX_LEN,GFP_KERNEL); */
+    /* char absolute_path[MAX_LEN]; */
+    /* char *ap = get_absolute_path(path, absolute_path); */
+    /* printk("%s: d path returned: %px vs %px; %s\n",MODNAME, ap, absolute_path, ap); */
+
+
     for (i = 0; i < reference_monitor.paths_len; i++){
         curr_path = reference_monitor.paths[i];
         if (strcmp(full_path, curr_path) == 0 ){
 
-
             op -> open_flag = O_RDONLY;
-            regs -> dx = (unsigned long)op;
-	        printk("%s: path: %s will be rejected\n",MODNAME, path);
+	        printk("%s: write on path: %s has been rejected\n",MODNAME, full_path);
             return 0;
         }
     }
@@ -167,29 +199,34 @@ int sys_open_wrapper(struct kprobe *ri, struct pt_regs *regs){
 }
 
 
-int add_path(const char *new_path){
+int add_path(const char __user *new_path){
     /*
         @TODO: check if already present into the list
         @TODO: prevent adding the-file path
-        @TODO: convert new_path in absolute path if needed
     */
+    int ret;
+    int len;
+    char full_path[MAX_LEN];
+
+    ret = get_user_full_path(new_path, strlen(new_path), full_path);
+    printk("%s: user_full_path: %s. error: %d\n", MODNAME, full_path, ret);
     reference_monitor.paths_len++;
     reference_monitor.paths = krealloc(reference_monitor.paths, (reference_monitor.paths_len) * sizeof(char *), GFP_KERNEL);
-
     if (reference_monitor.paths == NULL)
     {
         printk("%s: error allocating memory for paths.\n", MODNAME);
         return -1;
     }
 
-    reference_monitor.paths[reference_monitor.paths_len - 1] = kmalloc(strlen(new_path), GFP_KERNEL);
+    len = strlen(new_path);
+    reference_monitor.paths[reference_monitor.paths_len - 1] = kmalloc(len, GFP_KERNEL);
     if (reference_monitor.paths[reference_monitor.paths_len - 1] == NULL)
     {
         printk("%s: error allocating memory for new path.\n", MODNAME);
         return -1;
     }
 
-    strcpy(reference_monitor.paths[reference_monitor.paths_len - 1], new_path);
+    sprintf(reference_monitor.paths[reference_monitor.paths_len - 1], full_path, len);
     return 0;
 }
 

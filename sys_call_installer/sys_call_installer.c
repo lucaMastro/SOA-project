@@ -128,15 +128,49 @@ static unsigned long sys_compute_hash = (unsigned long) __x64_sys_compute_hash;
 
 /* ----------------------------------------------*/
 
+__SYSCALL_DEFINEx(3, _get_paths, char*, monitor_pass, char**, buffer, int, max_num_of_path_to_retrieve){
 
+    int ret;
+    int i, min;
+
+    min = max_num_of_path_to_retrieve < reference_monitor.paths_len ? max_num_of_path_to_retrieve : reference_monitor.paths_len;
+
+    /* checking password: */
+    for (i=0; i < min; i++){
+        strcpy(buffer[i], reference_monitor.paths[i]);
+    }
+
+    /* if (strcmp(current_pass, monitor_pass) != 0){ */
+    /*     printk("%s: error: wrong monitor pass password\n",MODNAME); */
+    /*     return -1; */
+    /* } */
+
+    /* ret = reference_monitor.add_path(new_path); */
+    /* if (ret < 0){ */
+    /*     printk("%s: error adding path\n",MODNAME); */
+    /*     return -2; */
+    /* } */
+
+    /* printk("%s: path added successfully\n",MODNAME); */
+    return 0;
+
+}
+static unsigned long sys_get_paths = (unsigned long) __x64_sys_get_paths;
+
+
+
+/* ----------------------------------------------*/
 
 int init_module(void) {
-
+    int index;
     printk("%s: initializing. There are %d slot avaiable to install new syscalls\n",MODNAME, sys_call_helper.free_entries_count);
 
-    sys_call_helper.install_syscall(sys_add_path);
-    sys_call_helper.install_syscall(sys_compute_hash);
-    printk("%s: installed sys_add\n",MODNAME);
+    index = sys_call_helper.install_syscall(sys_add_path);
+    printk("%s: installed sys_add at %d\n",MODNAME, index);
+    index = sys_call_helper.install_syscall(sys_compute_hash);
+    printk("%s: installed sys_compute_hash at %d\n",MODNAME, index);
+    index = sys_call_helper.install_syscall(sys_get_paths);
+    printk("%s: installed sys_get_paths at %d\n",MODNAME, index);
 
     return 0;
 
