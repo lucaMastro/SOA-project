@@ -208,15 +208,17 @@ unprotect_memory(void)
 /* ----------SYSCALL INSTALL -----------------*/
 
 int install_syscall(unsigned long *new_sys_call_addr){
+    int index;
+    int sct_index;
 	cr0 = read_cr0();
     // which index of free list has to be used?
-    int index = sys_call_helper.last_entry_used + 1;
+    index = sys_call_helper.last_entry_used + 1;
     if (index >= sys_call_helper.free_entries_count){
         printk("%s: cannot install another syscall\n",MODNAME);
         return -1;
     }
     // what is the syscall index to be used?
-    int sct_index = sys_call_helper.free_entries[index];
+    sct_index = sys_call_helper.free_entries[index];
 
     // installation
     unprotect_memory();

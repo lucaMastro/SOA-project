@@ -45,11 +45,11 @@ extern sys_call_helper_t sys_call_helper;
 #define HASH_SIZE 32
 
 int compute_hash(char *input_string, int input_size, char *output_buffer) {
-    printk("%s: compute_hash start\n",MODNAME);
     struct crypto_shash *tfm;
     struct shash_desc *desc;
     int ret;
 
+    printk("%s: compute_hash start\n",MODNAME);
     tfm = crypto_alloc_shash(HASH_FUNC, 0, 0);
     if (IS_ERR(tfm)) {
         printk("%s: error initializing transform\n", MODNAME);
@@ -83,7 +83,6 @@ int compute_hash(char *input_string, int input_size, char *output_buffer) {
 /*
    @TODO: move to a copy_from_user && copy_to_user representation
    @TODO: add checks on euid
-   @TODO: find a way to define the syscall number such that user can use it to invoke syscall
 */
 
 /* ----------SYSCALL DEFINITION -----------------*/
@@ -115,8 +114,9 @@ static unsigned long sys_add_path = (unsigned long) __x64_sys_add_path;
 
 __SYSCALL_DEFINEx(3, _compute_hash, char*, plain_text,int, input_size, char*, output_buffer){
     char hash[HASH_SIZE];
+    int ret;
     printk("%s: asked %s on %s of size %d\n", MODNAME, HASH_FUNC, plain_text, input_size);
-    int ret = compute_hash(plain_text, input_size, hash);
+    ret = compute_hash(plain_text, input_size, hash);
     printk("%s: asked %s on %s of size %d\n", MODNAME, HASH_FUNC, plain_text, input_size);
 
     bin2hex(output_buffer, hash, HASH_SIZE);
@@ -129,8 +129,6 @@ static unsigned long sys_compute_hash = (unsigned long) __x64_sys_compute_hash;
 /* ----------------------------------------------*/
 
 __SYSCALL_DEFINEx(3, _get_paths, char*, monitor_pass, char**, buffer, int, max_num_of_path_to_retrieve){
-
-    int ret;
     int i, min;
 
     min = max_num_of_path_to_retrieve < reference_monitor.paths_len ? max_num_of_path_to_retrieve : reference_monitor.paths_len;
@@ -165,11 +163,11 @@ int init_module(void) {
     int index;
     printk("%s: initializing. There are %d slot avaiable to install new syscalls\n",MODNAME, sys_call_helper.free_entries_count);
 
-    index = sys_call_helper.install_syscall(sys_add_path);
+    index = sys_call_helper.install_syscall((unsigned long *) sys_add_path);
     printk("%s: installed sys_add at %d\n",MODNAME, index);
-    index = sys_call_helper.install_syscall(sys_compute_hash);
+    index = sys_call_helper.install_syscall((unsigned long *) sys_compute_hash);
     printk("%s: installed sys_compute_hash at %d\n",MODNAME, index);
-    index = sys_call_helper.install_syscall(sys_get_paths);
+    index = sys_call_helper.install_syscall((unsigned long *) sys_get_paths);
     printk("%s: installed sys_get_paths at %d\n",MODNAME, index);
 
     return 0;

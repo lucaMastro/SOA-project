@@ -1,0 +1,1 @@
+cmd_/home/luca/Scrivania/shared/reference-monitor-kprobes/Module.symvers := sed 's/\.ko$$/\.o/' /home/luca/Scrivania/shared/reference-monitor-kprobes/modules.order | scripts/mod/modpost -m -a  -o /home/luca/Scrivania/shared/reference-monitor-kprobes/Module.symvers -e -i Module.symvers   -T -

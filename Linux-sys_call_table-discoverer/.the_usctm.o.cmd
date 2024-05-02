@@ -1,0 +1,1 @@
+cmd_/home/luca/Scrivania/shared/Linux-sys_call_table-discoverer/the_usctm.o := ld  -m elf_x86_64 -z noexecstack     -r -o /home/luca/Scrivania/shared/Linux-sys_call_table-discoverer/the_usctm.o /home/luca/Scrivania/shared/Linux-sys_call_table-discoverer/usctm.o /home/luca/Scrivania/shared/Linux-sys_call_table-discoverer/./lib/vtpmo.o

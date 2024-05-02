@@ -1,0 +1,1 @@
+cmd_/home/luca/Scrivania/shared/sys_call_installer/sys_call_installer.ko := ld -r  -m elf_x86_64 -z noexecstack   --build-id=sha1  -T scripts/module.lds -o /home/luca/Scrivania/shared/sys_call_installer/sys_call_installer.ko /home/luca/Scrivania/shared/sys_call_installer/sys_call_installer.o /home/luca/Scrivania/shared/sys_call_installer/sys_call_installer.mod.o;  true
