@@ -91,13 +91,20 @@ __SYSCALL_DEFINEx(2, _add_path, char*, monitor_pass, char*, new_path){
     int ret;
     /* checking password: */
     char current_pass[HASH_SIZE * 2];
-    bin2hex(current_pass, reference_monitor.hashed_pass, HASH_SIZE);
 
-    if (strcmp(current_pass, monitor_pass) != 0){
-        printk("%s: error: wrong monitor pass password\n",MODNAME);
+    if (strlen(monitor_pass) != HASH_SIZE * 2){
+        printk("%s: error: wrong monitor password in add_path\n",MODNAME);
         return -1;
     }
 
+    bin2hex(current_pass, reference_monitor.hashed_pass, HASH_SIZE);
+
+    if (strcmp(current_pass, monitor_pass) != 0){
+        printk("%s: error: wrong monitor password in add_path\n",MODNAME);
+        return -1;
+    }
+
+    /* adding path */
     ret = reference_monitor.add_path(new_path);
     if (ret < 0){
         printk("%s: error adding path\n",MODNAME);
@@ -155,10 +162,40 @@ __SYSCALL_DEFINEx(3, _get_paths, char*, monitor_pass, char**, buffer, int, max_n
 }
 static unsigned long sys_get_paths = (unsigned long) __x64_sys_get_paths;
 
-
-
 /* ----------------------------------------------*/
 
+__SYSCALL_DEFINEx(2, _rm_path, char*, monitor_pass, char*, path_to_remove){
+
+    int ret;
+    /* checking password: */
+    char current_pass[HASH_SIZE * 2];
+
+    if (strlen(monitor_pass) != HASH_SIZE * 2){
+        printk("%s: error: wrong monitor password in rm_path\n",MODNAME);
+        return -1;
+    }
+
+    bin2hex(current_pass, reference_monitor.hashed_pass, HASH_SIZE);
+
+    if (strcmp(current_pass, monitor_pass) != 0){
+        printk("%s: error: wrong monitor password in rm_path\n",MODNAME);
+        return -1;
+    }
+
+    /* removing path */
+    ret = reference_monitor.rm_path(path_to_remove);
+    if (ret < 0){
+        printk("%s: error removing path\n",MODNAME);
+        return -2;
+    }
+
+    printk("%s: path removed successfully\n",MODNAME);
+    return 0;
+
+}
+static unsigned long sys_rm_path = (unsigned long) __x64_sys_rm_path;
+
+/* ----------------------------------------------*/
 int init_module(void) {
     int index;
     printk("%s: initializing. There are %d slot avaiable to install new syscalls\n",MODNAME, sys_call_helper.free_entries_count);
@@ -169,6 +206,8 @@ int init_module(void) {
     printk("%s: installed sys_compute_hash at %d\n",MODNAME, index);
     index = sys_call_helper.install_syscall((unsigned long *) sys_get_paths);
     printk("%s: installed sys_get_paths at %d\n",MODNAME, index);
+    index = sys_call_helper.install_syscall((unsigned long *) sys_rm_path);
+    printk("%s: installed sys_rm_path at %d\n",MODNAME, index);
 
     return 0;
 

@@ -13,5 +13,6 @@ typedef struct _reference_monitor_t {
     char **paths;
     int paths_len;
     int (*add_path)(const char *new_path);
+    int (*rm_path)(const char *path);
 } reference_monitor_t;
 #endif

@@ -97,16 +97,18 @@ int get_user_full_path(const char *filename, ssize_t len, char *output_buffer){
 }
 
 
-/* char* get_absolute_path(const char *path, char *absolute_path) { */
-/*     int ret; */
-/*     struct path path_struct; */
-/*     //char *absolute_path = (char*) kmalloc(sizeof(char) * MAX_LEN,GFP_KERNEL); */
-/*     ret = kern_path(path, LOOKUP_FOLLOW, &path_struct); */
-/*     printk("%s: kern_path returned: %px; ret: %d\n",MODNAME, &path,ret); */
-/*     char *ap = d_path(&path_struct, absolute_path, MAX_LEN); */
-/*     printk("%s: d path returned: %px vs %px; %s\n",MODNAME, ap, absolute_path, ap); */
-/*     return ap; */
-/* } */
+int find_already_present_path(char *path_to_find){
+    int i;
+    char *curr;
+    for (i = 0; i < reference_monitor.paths_len; i++){
+        curr = reference_monitor.paths[i];
+        if (strcmp(path_to_find, curr) == 0)
+        {
+            break;
+        }
+    }
+    return i >= reference_monitor.paths_len ? -1 : i;
+}
 
 
 
@@ -137,25 +139,11 @@ int sys_open_wrapper(struct kprobe *ri, struct pt_regs *regs){
     // if not write mode, just return
     if(!(flags & O_RDWR) && !(flags & O_WRONLY) )  return 0;
 
-    /* printk("%s: name: %s && %px; uptr: %s && %px", MODNAME, path, path, usr_path, usr_path); */
-
     // getting full path:
     ret = get_user_full_path(usr_path, strlen(usr_path), full_path);
-    /* ret = get_user_full_path(path, strlen(usr_path), full_path); */
     if (ret < 0) {
-        /* printk("%s: error in get_user_full_path with name: %s and uptr %s\neuid: %d\n", MODNAME, path, usr_path, current->cred->euid.val); */
         sprintf(full_path, path, strlen(path));
     }
-
-    /* printk("%s: ------------path: %s\n", MODNAME, full_path); */
-    /* printk("%s: name: %s, uptr: %s\n", MODNAME, path, usr_path); */
-
-    /* struct path path_struct; */
-    /* //char *absolute_path = (char*) kmalloc(sizeof(char) * MAX_LEN,GFP_KERNEL); */
-    /* char absolute_path[MAX_LEN]; */
-    /* char *ap = get_absolute_path(path, absolute_path); */
-    /* printk("%s: d path returned: %px vs %px; %s\n",MODNAME, ap, absolute_path, ap); */
-
 
     for (i = 0; i < reference_monitor.paths_len; i++){
         curr_path = reference_monitor.paths[i];
@@ -207,9 +195,21 @@ int add_path(const char __user *new_path){
     int ret;
     int len;
     char full_path[MAX_LEN];
+    int already_present_path;
 
     ret = get_user_full_path(new_path, strlen(new_path), full_path);
-    printk("%s: user_full_path: %s. error: %d\n", MODNAME, full_path, ret);
+    if (ret < 0){
+        printk("%s: full path problem.\n",MODNAME);
+        return -1;
+    }
+
+    /* checking if already present: */
+    already_present_path = find_already_present_path(full_path);
+    if (already_present_path >= 0){
+        printk("%s: error: path already present: %s\n",MODNAME, full_path);
+        return -1;
+    }
+
     reference_monitor.paths_len++;
     reference_monitor.paths = krealloc(reference_monitor.paths, (reference_monitor.paths_len) * sizeof(char *), GFP_KERNEL);
     if (reference_monitor.paths == NULL)
@@ -229,6 +229,58 @@ int add_path(const char __user *new_path){
     sprintf(reference_monitor.paths[reference_monitor.paths_len - 1], full_path, len);
     return 0;
 }
+
+
+int rm_path(const char *new_path){
+    int ret;
+    char full_path[MAX_LEN];
+    int already_present_path;
+    char *last_element;
+
+
+    ret = get_user_full_path(new_path, strlen(new_path), full_path);
+    if (ret < 0){
+        printk("%s: full path problem.\n",MODNAME);
+        return -1;
+    }
+
+    /* checking if trying to remove PASS_FILE: */
+    if (strcmp(full_path, PASS_FILE) == 0){
+        printk("%s: error: cannot remove this path\n",MODNAME);
+        return -1;
+    }
+
+    /* checking if already present: */
+    already_present_path = find_already_present_path(full_path);
+    if (already_present_path < 0){
+        printk("%s: error: path not present\n",MODNAME);
+        return -1;
+    }
+
+
+    /*
+        [a b c d e ] ---> [a b x d e]
+        i just need to move "e" where c was: [a b e d]. I don't care about order
+    */
+    // checking if i didnt remove the last element
+    if (already_present_path != reference_monitor.paths_len - 1){
+        last_element = reference_monitor.paths[reference_monitor.paths_len - 1];
+        sprintf(reference_monitor.paths[already_present_path], last_element, strlen(last_element));
+    }
+
+    // free last element
+    kfree(reference_monitor.paths[reference_monitor.paths_len - 1]);
+    reference_monitor.paths_len--;
+    reference_monitor.paths = krealloc(reference_monitor.paths, (reference_monitor.paths_len) * sizeof(char *), GFP_KERNEL);
+    if (reference_monitor.paths == NULL)
+    {
+        printk("%s: error freeding memory for paths.\n", MODNAME);
+        return -1;
+    }
+
+    return 0;
+}
+
 
 static int read_pass_file(void){
     ssize_t bytes_read;
@@ -285,6 +337,7 @@ static int init_reference_monitor(void) {
     }
     reference_monitor.paths[reference_monitor.paths_len - 1] = PASS_FILE;
     reference_monitor.add_path = add_path;
+    reference_monitor.rm_path = rm_path;
 
     // init the password:
     ret = read_pass_file();
@@ -293,17 +346,6 @@ static int init_reference_monitor(void) {
         return ret;
     }
 
-    /* char hash[32]; */
-    /* compute_hash("prova", 5, hash); */
-    /* char hex_hash[64]; */
-    /* bin2hex(hex_hash, hash, 32); */
-    /* printk("%s: hex_hash: %s",MODNAME, hex_hash); */
-    /* bin2hex(hex_hash, reference_monitor.hashed_pass, 32); */
-    /* printk("%s: hex_hash: %s",MODNAME, hex_hash); */
-
-
-    /* printk("%s: adding dummy path to module: /home/luca/Scrivania/prova.txt",MODNAME); */
-    /* reference_monitor.add_path("/home/luca/Scrivania/prova.txt"); */
     printk("%s: done\n",MODNAME);
 
 	return 0;
