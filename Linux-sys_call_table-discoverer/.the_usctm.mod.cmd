@@ -1,1 +1,0 @@
-cmd_/home/luca/Scrivania/shared/Linux-sys_call_table-discoverer/the_usctm.mod := { echo  /home/luca/Scrivania/shared/Linux-sys_call_table-discoverer/usctm.o /home/luca/Scrivania/shared/Linux-sys_call_table-discoverer/./lib/vtpmo.o;  echo; } > /home/luca/Scrivania/shared/Linux-sys_call_table-discoverer/the_usctm.mod

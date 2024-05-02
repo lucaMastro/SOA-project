@@ -1,1 +1,0 @@
-cmd_/home/luca/Scrivania/shared/Linux-sys_call_table-discoverer/Module.symvers := sed 's/\.ko$$/\.o/' /home/luca/Scrivania/shared/Linux-sys_call_table-discoverer/modules.order | scripts/mod/modpost -m -a  -o /home/luca/Scrivania/shared/Linux-sys_call_table-discoverer/Module.symvers -e -i Module.symvers -i /home/luca/Scrivania/shared/reference-monitor-kprobes/Module.symvers   -T -
