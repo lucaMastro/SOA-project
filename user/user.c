@@ -65,12 +65,13 @@ int main(int argc, char** argv){
     int ret;
 
     char hash[65];
-    char plain_text[256];
     char new_path[256];
     char *static_new_path, *static_new_path_2;
     int len;
-    printf("reference monitor password: ");
-    scanf("%s", plain_text);
+    /* char plain_text[256]; */
+    /* printf("reference monitor password: "); */
+    /* scanf("%s", plain_text); */
+    char *plain_text = "asd";
 
     len = strlen(plain_text);
 
@@ -89,6 +90,7 @@ int main(int argc, char** argv){
 
     /* printf("\npath to add: "); */
     /* scanf("%s", new_path); */
+
     add_path(hash,"../../prova.txt");
     add_path(hash,"../../prova2.txt");
     add_path(hash,"../../prova3.txt");

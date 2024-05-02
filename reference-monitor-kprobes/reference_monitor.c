@@ -218,7 +218,7 @@ int add_path(const char __user *new_path){
         return -1;
     }
 
-    len = strlen(new_path);
+    len = strlen(full_path);
     reference_monitor.paths[reference_monitor.paths_len - 1] = kmalloc(len, GFP_KERNEL);
     if (reference_monitor.paths[reference_monitor.paths_len - 1] == NULL)
     {
