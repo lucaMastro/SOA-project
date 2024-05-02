@@ -227,6 +227,57 @@ __SYSCALL_DEFINEx(2, _rm_path, char*, monitor_pass, char*, path_to_remove){
 static unsigned long sys_rm_path = (unsigned long) __x64_sys_rm_path;
 
 /* ----------------------------------------------*/
+
+
+__SYSCALL_DEFINEx(2, _change_monitor_password, char*, old_pass, char*, new_pass){
+
+    int ret;
+    char old_pass_k[HASH_SIZE * 2 + 1];
+    char new_pass_k[HASH_SIZE * 2 + 1];
+    char current_pass[HASH_SIZE * 2 + 1];
+
+
+    ret = copy_from_user(old_pass_k, old_pass, HASH_SIZE * 2);
+	if(ret != 0) {
+        printk("%s: error: copy_from_user compare passwd\n",MODNAME);
+        return -1;
+    }
+    old_pass_k[2 * HASH_SIZE] = '\0';
+
+    /* checking password: */
+    bin2hex(current_pass, reference_monitor.hashed_pass, HASH_SIZE);
+    current_pass[2 * HASH_SIZE] = '\0';
+    if (strcmp(old_pass_k, current_pass) != 0){
+        printk("%s: error: wrong monitor password in change password\n",MODNAME);
+        return -1;
+    }
+
+    /* updating password: */
+    ret = copy_from_user(new_pass_k, new_pass, HASH_SIZE * 2);
+	if(ret != 0) {
+        printk("%s: error: copy_from_user compare passwd\n",MODNAME);
+        return -1;
+    }
+    new_pass_k[2 * HASH_SIZE] = '\0';
+
+    // third param is result length
+    ret = hex2bin(reference_monitor.hashed_pass, new_pass_k, HASH_SIZE);
+    if (ret < 0){
+        printk("%s: error: changing password\n",MODNAME);
+        return ret;
+    }
+
+    printk("%s: password changed successfully\n", MODNAME);
+    printk("%s: %s\n", MODNAME, reference_monitor.hashed_pass);
+
+    return 0;
+
+}
+static unsigned long sys_change_monitor_password = (unsigned long) __x64_sys_change_monitor_password;
+
+/* ----------------------------------------------*/
+
+
 int init_module(void) {
     int index;
     printk("%s: initializing. There are %d slot avaiable to install new syscalls\n",MODNAME, sys_call_helper.free_entries_count);
@@ -239,6 +290,8 @@ int init_module(void) {
     printk("%s: installed sys_get_paths at %d\n",MODNAME, index);
     index = sys_call_helper.install_syscall((unsigned long *) sys_rm_path);
     printk("%s: installed sys_rm_path at %d\n",MODNAME, index);
+    index = sys_call_helper.install_syscall((unsigned long *) sys_change_monitor_password);
+    printk("%s: installed sys_change_monitor_password at %d\n",MODNAME, index);
 
     return 0;
 

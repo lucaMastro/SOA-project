@@ -8,10 +8,11 @@
     @TODO: add the hidden way to get the password
 */
 
-#define SYS_ADD     134
-#define SYS_HASH    156
-#define SYS_GET     174
-#define SYS_RM      177
+#define SYS_ADD             134
+#define SYS_HASH            156
+#define SYS_GET             174
+#define SYS_RM              177
+#define SYS_CHANGE_PASS     178
 
 
 
@@ -61,10 +62,26 @@ int rm_path(char *hash, char* path){
 }
 
 
+int change_monitor_password(char *old_pass, char *new_pass){
+    int ret;
+    printf("changing password...\n");
+	/* ret = syscall(SYS_RM, hash, new_path); */
+	ret = syscall(SYS_CHANGE_PASS, old_pass, new_pass);
+    if (ret < 0){
+        printf("something went wrong changing password\n");
+        return ret;
+    }
+
+    printf("password changed successfully\n");
+    return 0;
+}
+
+
 int main(int argc, char** argv){
     int ret;
 
     char hash[65];
+    char new_hash[65];
     char new_path[256];
     char *static_new_path, *static_new_path_2;
     int len;
@@ -72,6 +89,7 @@ int main(int argc, char** argv){
     /* printf("reference monitor password: "); */
     /* scanf("%s", plain_text); */
     char *plain_text = "asd";
+    char *new_plain_text = "lol";
 
     len = strlen(plain_text);
 
@@ -85,28 +103,39 @@ int main(int argc, char** argv){
     fflush(stdout);
 
 
+	ret = syscall(SYS_HASH, new_plain_text, len, new_hash);
+    if (ret < 0){
+        printf("something went wrong hashing password\n");
+        return -1;
+    }
 
-    get_paths(hash);
+    printf("hashed new password: %s\n", new_hash);
+    fflush(stdout);
+
+    change_monitor_password(hash, new_hash);
+
+
+    get_paths(new_hash);
 
     /* printf("\npath to add: "); */
     /* scanf("%s", new_path); */
 
-    add_path(hash,"../../prova.txt");
-    add_path(hash,"../../prova2.txt");
-    add_path(hash,"../../prova3.txt");
-    get_paths(hash);
+    add_path(new_hash,"../../prova.txt");
+    add_path(new_hash,"../../prova2.txt");
+    add_path(new_hash,"../../prova3.txt");
+    get_paths(new_hash);
 
 
-    rm_path(hash, "../../prova2.txt");
-    get_paths(hash);
-    rm_path(hash, "../../prova2.txt");
-    rm_path(hash, "../../prova3.txt");
-    get_paths(hash);
-    rm_path(hash, "../../prova.txt");
-    get_paths(hash);
+    rm_path(new_hash, "../../prova2.txt");
+    get_paths(new_hash);
+    rm_path(new_hash, "../../prova2.txt");
+    rm_path(new_hash, "../../prova3.txt");
+    get_paths(new_hash);
+    rm_path(new_hash, "../../prova.txt");
+    get_paths(new_hash);
 
-    rm_path(hash, "../hash_sha256");
-    get_paths(hash);
+    rm_path(new_hash, "../hash_sha256");
+    get_paths(new_hash);
 
     return 0;
 
