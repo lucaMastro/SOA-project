@@ -76,11 +76,11 @@ int get_user_full_path(const char *filename, ssize_t len, char *output_buffer){
     int error = -EINVAL,flag=0;
     unsigned int lookup_flags = 0;
     char *tpath=kmalloc(1024,GFP_KERNEL);
-    if ((flag & ~(AT_SYMLINK_NOFOLLOW | AT_NO_AUTOMOUNT)) != 0)
-    {
-        kfree(tpath);
-        return error;
-    }
+    /* if ((flag & ~(AT_SYMLINK_NOFOLLOW | AT_NO_AUTOMOUNT)) != 0) */
+    /* { */
+    /*     kfree(tpath); */
+    /*     return error; */
+    /* } */
     if (!(flag & AT_SYMLINK_NOFOLLOW))
         lookup_flags |= LOOKUP_FOLLOW;
 
@@ -109,6 +109,7 @@ int find_already_present_path(char *path_to_find){
     }
     return i >= reference_monitor.paths_len ? -1 : i;
 }
+
 
 
 
@@ -142,8 +143,10 @@ int sys_open_wrapper(struct kprobe *ri, struct pt_regs *regs){
     // getting full path:
     ret = get_user_full_path(usr_path, strlen(usr_path), full_path);
     if (ret < 0) {
+        printk("%s: get_user_full_path problem with path: %s\n", MODNAME, usr_path);
         sprintf(full_path, path, strlen(path));
     }
+
 
     for (i = 0; i < reference_monitor.paths_len; i++){
         curr_path = reference_monitor.paths[i];
@@ -194,8 +197,17 @@ int add_path(const char __user *new_path){
     */
     int ret;
     int len;
-    char full_path[MAX_LEN];
+    /* char full_path[MAX_LEN]; */
+    char *full_path;
     int already_present_path;
+
+    full_path = (char*)kmalloc(sizeof(char)*MAX_LEN, GFP_KERNEL);
+    /* ap = get_absolute_path(new_path, full_path); */
+    /* if (ap == NULL){ */
+    /*     printk("%s: error in get_absolute_path\n", MODNAME); */
+    /*     return -1; */
+    /* } */
+    /* printk("%s: AUDIT: full_path: %s\nap: %px, %s\n",MODNAME, full_path, ap, ap); */
 
     ret = get_user_full_path(new_path, strlen(new_path), full_path);
     if (ret < 0){
