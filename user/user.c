@@ -87,6 +87,9 @@ int main(int argc, char** argv){
     /* char plain_text[256]; */
     /* printf("reference monitor password: "); */
     /* scanf("%s", plain_text); */
+
+    seteuid(0);
+    setegid(0);
     char *plain_text = "asd";
     char *new_plain_text = "lol";
     len = strlen(plain_text);

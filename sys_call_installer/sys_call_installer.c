@@ -44,6 +44,7 @@ extern sys_call_helper_t sys_call_helper;
 #define HASH_FUNC "sha256"
 #define HASH_SIZE 32
 #define MAX_PASS_LEN 256
+#define CHECK_EUID 1
 
 
 /* --------------------------------------------------------- */
@@ -109,6 +110,17 @@ __SYSCALL_DEFINEx(2, _add_path, char* __user, monitor_pass, char* __user, new_pa
     int ret;
     char *user_pass;
     ssize_t len;
+    int euid;
+
+    /* euid check: */
+    euid = current->cred->euid.val;
+
+
+    if (CHECK_EUID && euid != 0)
+    {
+        printk("%s: inappropriate effective euid: %d in add_path\n", MODNAME, euid);
+        return -1;
+    }
 
     // this counts the '\0'. It has to be excluded in password check
     len = strnlen_user(monitor_pass, MAX_PASS_LEN);
@@ -150,7 +162,15 @@ __SYSCALL_DEFINEx(3, _get_paths, char* __user, monitor_pass, char** __user, buff
     int i, min, ret;
     char *user_pass;
     ssize_t len;
+    int euid;
 
+    /* euid check: */
+    euid = current->cred->euid.val;
+    if (CHECK_EUID && euid != 0)
+    {
+        printk("%s: inappropriate effective euid: %d in get_paths\n", MODNAME, euid);
+        return -1;
+    }
     // this counts the '\0'. It has to be excluded in password check
     len = strnlen_user(monitor_pass, MAX_PASS_LEN);
     user_pass = (char*) kmalloc(sizeof(char) * len, GFP_KERNEL);
@@ -192,6 +212,15 @@ __SYSCALL_DEFINEx(2, _rm_path, char*, monitor_pass, char*, path_to_remove){
     int ret;
     char *user_pass;
     ssize_t len;
+    int euid;
+
+    /* euid check: */
+    euid = current->cred->euid.val;
+    if (CHECK_EUID && euid != 0)
+    {
+        printk("%s: inappropriate effective euid: %d in rm_path\n", MODNAME, euid);
+        return -1;
+    }
 
     // this counts the '\0'. It has to be excluded in password check
     len = strnlen_user(monitor_pass, MAX_PASS_LEN);
@@ -234,6 +263,15 @@ __SYSCALL_DEFINEx(2, _change_monitor_password, char*, old_pass, char*, new_pass)
     char *old_pass_k;
     char *new_pass_k;
     ssize_t len;
+    int euid;
+
+    /* euid check: */
+    euid = current->cred->euid.val;
+    if (CHECK_EUID && euid != 0)
+    {
+        printk("%s: inappropriate effective euid: %d in change_monitor_password\n", MODNAME, euid);
+        return -1;
+    }
 
     // this counts the '\0'. It has to be excluded in password check
     len = strnlen_user(old_pass, MAX_PASS_LEN);

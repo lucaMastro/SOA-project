@@ -128,6 +128,16 @@ int sys_open_wrapper(struct kprobe *ri, struct pt_regs *regs){
     struct filename *file_name =(struct filename*) regs -> si;
     struct open_flags *op = (struct open_flags*) (regs -> dx);
 
+    // if not write mode, just return
+    if (
+         (!(flags & O_RDWR) && !(flags & O_WRONLY)) ||
+         (reference_monitor.state == OFF) ||
+         (reference_monitor.state == RECOFF)
+        )
+    {
+        return 0;
+    }
+
     dfd = (int) regs -> di;
     flags = op -> open_flag;
     //umode_t mode = op -> mode;
@@ -137,8 +147,6 @@ int sys_open_wrapper(struct kprobe *ri, struct pt_regs *regs){
         return 0;
 
     usr_path = (const char*) file_name -> uptr;
-    // if not write mode, just return
-    if(!(flags & O_RDWR) && !(flags & O_WRONLY) )  return 0;
 
     // getting full path:
     ret = get_user_full_path(usr_path, strlen(usr_path), full_path);
@@ -192,7 +200,6 @@ int sys_open_wrapper(struct kprobe *ri, struct pt_regs *regs){
 
 int add_path(const char __user *new_path){
     /*
-        @TODO: check if already present into the list
         @TODO: prevent adding the-file path
     */
     int ret;
