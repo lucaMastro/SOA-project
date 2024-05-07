@@ -78,6 +78,20 @@ int isDir(const char *filename){
 
 
 
+struct dentry *get_dentry_from_path(const char *path){
+    struct path file_path;
+    int ret;
+    ret = kern_path(path, 0, &file_path);
+    /* ret = kern_path(full_path, 0, &file_path); */
+    if (ret != 0){
+        /* printk("%s: error: for %s filename_lookup is %d\n", MODNAME, path, ret); */
+        return NULL;
+    }
+
+    return file_path.dentry;
+}
+
+
 int mkdir_wrapper(struct kprobe *ri, struct pt_regs *regs){
     /* int dfd = (int) regs -> di; */
     /* struct filename *filename =(struct filename*) regs -> si; */
@@ -109,69 +123,53 @@ int rmdir_wrapper(struct kprobe *ri, struct pt_regs *regs){
     https://stackoverflow.com/questions/61500432/relative-path-to-absolute-path-in-linux-kernel
 */
 
-int get_user_full_path(const char *filename, ssize_t len, char *output_buffer){
-    struct path path;
-    int dfd=AT_FDCWD;
-    char *ret_ptr=NULL;
-    int error = -EINVAL,flag=0;
-    unsigned int lookup_flags = 0;
-    char *tpath=kmalloc(1024,GFP_KERNEL);
-    /* if ((flag & ~(AT_SYMLINK_NOFOLLOW | AT_NO_AUTOMOUNT)) != 0) */
-    /* { */
-    /*     kfree(tpath); */
-    /*     return error; */
-    /* } */
-    if (!(flag & AT_SYMLINK_NOFOLLOW))
-        lookup_flags |= LOOKUP_FOLLOW;
+/* int get_user_full_path(const char *filename, ssize_t len, char *output_buffer){ */
+/*     struct path path; */
+/*     int dfd=AT_FDCWD; */
+/*     char *ret_ptr=NULL; */
+/*     int error = -EINVAL,flag=0; */
+/*     unsigned int lookup_flags = 0; */
+/*     char *tpath=kmalloc(1024,GFP_KERNEL); */
+/*     /1* if ((flag & ~(AT_SYMLINK_NOFOLLOW | AT_NO_AUTOMOUNT)) != 0) *1/ */
+/*     /1* { *1/ */
+/*     /1*     kfree(tpath); *1/ */
+/*     /1*     return error; *1/ */
+/*     /1* } *1/ */
+/*     if (!(flag & AT_SYMLINK_NOFOLLOW)) */
+/*         lookup_flags |= LOOKUP_FOLLOW; */
 
-    error = user_path_at(dfd, filename, lookup_flags, &path);
-    if (error)
-    {
-        kfree(tpath);
-        return error;
-    }
-    ret_ptr = d_path(&path, tpath, 1024);
-    sprintf(output_buffer, ret_ptr, strlen(ret_ptr));
-    kfree(tpath);
-    return 0;
-}
+/*     error = user_path_at(dfd, filename, lookup_flags, &path); */
+/*     if (error) */
+/*     { */
+/*         kfree(tpath); */
+/*         return error; */
+/*     } */
+/*     ret_ptr = d_path(&path, tpath, 1024); */
+/*     sprintf(output_buffer, ret_ptr, strlen(ret_ptr)); */
+/*     kfree(tpath); */
+/*     return 0; */
+/* } */
 
 
-int find_already_present_path(char *path_to_find){
+/*
+   returns position of dentry found, otherwise -1
+*/
+int find_already_present_path(struct dentry *dentry_to_find){
     int i;
-    char *curr;
-    for (i = 0; i < reference_monitor.paths_len; i++){
-        curr = reference_monitor.paths[i];
-        if (strcmp(path_to_find, curr) == 0)
+    struct dentry *curr;
+    /* printk("DEBUG: len: %d, dentry_to_find: %px\n", reference_monitor.filtered_paths_len, dentry_to_find); */
+
+    /* for (i = 0; i < reference_monitor.filtered_paths_len; i++){ */
+    /*     curr = reference_monitor.filtered_paths[i]; */
+    /* } */
+    for (i = 0; i < reference_monitor.filtered_paths_len; i++){
+        curr = reference_monitor.filtered_paths[i];
+        if (curr -> d_inode == dentry_to_find-> d_inode)
         {
             break;
         }
     }
-    return i >= reference_monitor.paths_len ? -1 : i;
-}
-
-
-struct inode *get_parent_inode(struct dentry *child_dentry) {
-    struct dentry *parent_dentry;
-    struct inode *parent_inode = NULL;
-    char buf[256];
-
-    // Controllo se child_dentry è NULL
-    if (!child_dentry)
-        return NULL;
-
-    // Acquisisco la struttura dentry del child_dentry
-    parent_dentry = dget_parent(child_dentry);
-    if (parent_dentry) {
-        // Estraggo l'inode della directory genitore
-        parent_inode = d_inode(parent_dentry);
-        dentry_path_raw(parent_dentry, buf, 256);
-        printk("parent_inode name (its a prova): %s\n", buf);
-        // Rilascio la struttura dentry
-        dput(parent_dentry);
-    }
-
-    return parent_inode;
+    return i >= reference_monitor.filtered_paths_len ? -1 : i;
 }
 
 
@@ -179,9 +177,11 @@ struct inode *get_parent_inode(struct dentry *child_dentry) {
 char *full_path_from_dentry(struct dentry *dentry) {
     char *path = kmalloc(MAX_LEN, GFP_KERNEL);
     struct dentry *parent = dentry -> d_parent;
-    char *name = dentry->d_name.name;
+    const char *name = dentry->d_name.name;
     int name_len = strlen(name);
     int path_len = name_len;
+    const char *parent_name;
+    int parent_name_len;
 
     if (!path)
         return NULL;
@@ -195,9 +195,8 @@ char *full_path_from_dentry(struct dentry *dentry) {
         initial '/' will be in the path at the end of loop.
     */
     while (parent != parent -> d_parent) {
-        printk("%s: starting with: %s. dentry: %px, parent: %px\n", MODNAME, path, dentry, parent);
-        const char *parent_name = parent->d_name.name;
-        int parent_name_len = strlen(parent_name);
+        parent_name = parent->d_name.name;
+        parent_name_len = strlen(parent_name);
 
         if (path_len + parent_name_len + 2 > MAX_LEN) {
             kfree(path);
@@ -214,7 +213,6 @@ char *full_path_from_dentry(struct dentry *dentry) {
         dentry = parent;
         parent = dentry -> d_parent;
         /* dput(dentry); */
-        printk("%s: ending with: %s\n", MODNAME, path);
     }
 
     // adding starting '/':
@@ -226,32 +224,34 @@ char *full_path_from_dentry(struct dentry *dentry) {
 
 
 
-int tmp_wrapper(struct kprobe *ri, struct pt_regs *regs){
+/* int tmp_wrapper(struct kprobe *ri, struct pt_regs *regs){ */
 
-    struct inode *dir = (struct inode*) regs -> si;
-    struct dentry *dentry = (struct dentry*) regs-> dx;
-    printk("tmp_wrapper: TMP WRAPPER prova: %px, dentry_name %s, parent_inode: %px, dentry_full_path: %s\n",  dir, dentry -> d_name.name, dentry -> d_parent -> d_inode, full_path_from_dentry(dentry));
-    return 0;
-}
+/*     struct inode *dir = (struct inode*) regs -> si; */
+/*     struct dentry *dentry = (struct dentry*) regs-> dx; */
+/*     printk("tmp_wrapper: TMP WRAPPER prova: %px, dentry_name %s, parent_inode: %px, dentry_full_path: %s\n",  dir, dentry -> d_name.name, dentry -> d_parent -> d_inode, full_path_from_dentry(dentry)); */
+/*     return 0; */
+/* } */
 
 
 int sys_open_wrapper(struct kprobe *ri, struct pt_regs *regs){
 
-    int i;
-    char *curr_path;
+    /* int i; */
+    /* struct dentry *curr_path; */
     // parsing parameters
     int dfd;
     int flags;
     const char *path;
-    const char *usr_path;
-    char full_path[MAX_LEN];
-    int ret;
+    /* const char *usr_path; */
+    /* char full_path[MAX_LEN]; */
+    /* int ret; */
 
     int write_mode = O_RDWR | O_WRONLY;
     int creat_mode = O_CREAT | O_TMPFILE;
 
     struct filename *file_name =(struct filename*) regs -> si;
     struct open_flags *op = (struct open_flags*) (regs -> dx);
+
+    struct dentry *d_path;
 
     dfd = (int) regs -> di;
     flags = op -> open_flag;
@@ -263,22 +263,11 @@ int sys_open_wrapper(struct kprobe *ri, struct pt_regs *regs){
         return 0;
 
 
-    struct path file_path;
-    struct inode *inode;
-    ret = kern_path(path, 0, &file_path);
-    /* ret = kern_path(full_path, 0, &file_path); */
-    if (ret != 0){
-        printk("sys_open_wrapper_tmp: for %s filename_lookup is %d\n", path, ret);
+    d_path = get_dentry_from_path(path);
+    if (d_path == NULL){
+        /* printk("%s: failed getting dentry from path %s\n",MODNAME, path); */
+        return 0;
     }
-    else{
-        inode = file_path.dentry->d_inode;
-        printk("sys_open_wrapper_tmp: for path: %s, inode addr: %px; name: %s\n", path, inode, file_path.dentry ->d_iname);
-        /* printk("sys_open_wrapper: for path: %s, parent-inode addr: %px", path, get_parent_inode(file_path.dentry)); */
-    }
-
-
-
-
     // if not write mode, just return
     if (
          (!(flags & write_mode) && !(flags & creat_mode)) ||
@@ -289,30 +278,12 @@ int sys_open_wrapper(struct kprobe *ri, struct pt_regs *regs){
         return 0;
     }
 
-
-    /* path = (const char*) file_name -> name; */
-    /* if (strcmp(dmesg_path, path) == 0) */
-    /*     return 0; */
-
-    usr_path = (const char*) file_name -> uptr;
-
-    // getting full path:
-    ret = get_user_full_path(usr_path, strnlen_user(usr_path, MAX_LEN), full_path);
-    if (ret < 0) {
-        /* printk("%s: get_user_full_path problem with path: %s\n", MODNAME, usr_path); */
-        sprintf(full_path, path, strlen(path));
+    if (find_already_present_path(d_path) >= 0 ){
+        op -> open_flag = O_RDONLY;
+        printk("%s: write on path: %s has been rejected\n",MODNAME, path);
+        return 0;
     }
 
-
-    for (i = 0; i < reference_monitor.paths_len; i++){
-        curr_path = reference_monitor.paths[i];
-        if (strcmp(full_path, curr_path) == 0 ){
-
-            op -> open_flag = O_RDONLY;
-	        printk("%s: write on path: %s has been rejected\n",MODNAME, full_path);
-            return 0;
-        }
-    }
 
 
 
@@ -347,51 +318,52 @@ int sys_open_wrapper(struct kprobe *ri, struct pt_regs *regs){
 
 
 int unlink_wrapper(struct kprobe *ri, struct pt_regs *regs){
-    struct filename *filename =(struct filename*) regs -> si;
+    /* struct filename *filename =(struct filename*) regs -> si; */
 
-	const __user char *usr_path = filename->uptr;
-	const char *k_path = filename->name;
-    char full_path[MAX_LEN];
-    char * curr_path;
-    int i;
-    int ret;
-    // /dummy/path/<sha256("/dummy/path")>
-    /* char *dummy_path = "/dummy/path/71ed8baea43fa1c424bbd9ab5af14973b6fd32542809e76002c5c2457b152a5e"; */
+	/* const __user char *usr_path = filename->uptr; */
+	/* const char *k_path = filename->name; */
+    /* char full_path[MAX_LEN]; */
+    /* char * curr_path; */
+    /* int i; */
+    /* int ret; */
+    /* // /dummy/path/<sha256("/dummy/path")> */
+    /* /1* char *dummy_path = "/dummy/path/71ed8baea43fa1c424bbd9ab5af14973b6fd32542809e76002c5c2457b152a5e"; *1/ */
 
 
-    ret = get_user_full_path(usr_path, strnlen_user(usr_path, MAX_LEN), full_path);
-    if (ret < 0) {
-        /* printk("%s: get_user_full_path problem with path: %s\n", MODNAME, usr_path); */
-        sprintf(full_path, k_path, strlen(k_path));
-    }
+    /* ret = get_user_full_path(usr_path, strnlen_user(usr_path, MAX_LEN), full_path); */
+    /* if (ret < 0) { */
+    /*     /1* printk("%s: get_user_full_path problem with path: %s\n", MODNAME, usr_path); *1/ */
+    /*     sprintf(full_path, k_path, strlen(k_path)); */
+    /* } */
 
-    for (i = 0; i < reference_monitor.paths_len; i++){
-        curr_path = reference_monitor.paths[i];
-        if (strcmp(full_path, curr_path) == 0 ){
-            /* filename -> name = dummy_path; */
-            /* regs -> si = filename; */
-            regs -> si = (long unsigned int) NULL;
-	        printk("%s: rm on path: %s has been rejected. It will cause a segfault\n",MODNAME, full_path);
-            return 0;
-        }
-    }
+    /* for (i = 0; i < reference_monitor.filtered_paths_len; i++){ */
+    /*     curr_path = reference_monitor.filtered_paths[i]; */
+    /*     if (strcmp(full_path, curr_path) == 0 ){ */
+    /*         /1* filename -> name = dummy_path; *1/ */
+    /*         /1* regs -> si = filename; *1/ */
+    /*         regs -> si = (long unsigned int) NULL; */
+	        /* printk("%s: rm on path: %s has been rejected. It will cause a segfault\n",MODNAME, full_path); */
+    /*         return 0; */
+    /*     } */
+    /* } */
     return 0;
 }
 
 
 
-int add_path(const char __user *new_path){
+int add_path(const char *new_path){
     /*
         @TODO: prevent adding the-file path
     */
-    int ret;
-    int len;
+    /* int ret; */
+    /* int len; */
     /* char full_path[MAX_LEN]; */
-    char *full_path;
+    /* char *full_path; */
     int already_present_path;
-    int is_dir;
+    /* int is_dir; */
+    struct dentry *dentry;
 
-    full_path = (char*)kmalloc(sizeof(char)*MAX_LEN, GFP_KERNEL);
+    /* full_path = (char*)kmalloc(sizeof(char)*MAX_LEN, GFP_KERNEL); */
     /* ap = get_absolute_path(new_path, full_path); */
     /* if (ap == NULL){ */
     /*     printk("%s: error in get_absolute_path\n", MODNAME); */
@@ -399,91 +371,85 @@ int add_path(const char __user *new_path){
     /* } */
     /* printk("%s: AUDIT: full_path: %s\nap: %px, %s\n",MODNAME, full_path, ap, ap); */
 
-    ret = get_user_full_path(new_path, strlen(new_path), full_path);
-    if (ret < 0){
-        printk("%s: full path problem.\n",MODNAME);
+    /* ret = get_user_full_path(new_path, strlen(new_path), full_path); */
+    /* if (ret < 0){ */
+    /*     printk("%s: full path problem.\n",MODNAME); */
+    /*     return -1; */
+    /* } */
+
+    dentry = get_dentry_from_path(new_path);
+    if (dentry == NULL){
+        printk("%s: failed getting dentry from path %s\n", MODNAME, new_path);
         return -1;
     }
 
-
-    is_dir = isDir(full_path);
-    printk("%s: is_dir = %d\n", MODNAME, is_dir);
+    /* is_dir = isDir(full_path); */
+    /* printk("%s: is_dir = %d\n", MODNAME, is_dir); */
     /* checking if already present: */
-    already_present_path = find_already_present_path(full_path);
+    already_present_path = find_already_present_path(dentry);
     if (already_present_path >= 0){
-        printk("%s: error: path already present: %s\n",MODNAME, full_path);
+        printk("%s: error: path already present: %s\n",MODNAME, full_path_from_dentry(dentry));
         return -1;
     }
 
-    reference_monitor.paths_len++;
-    reference_monitor.paths = krealloc(reference_monitor.paths, (reference_monitor.paths_len) * sizeof(char *), GFP_KERNEL);
-    if (reference_monitor.paths == NULL)
+    reference_monitor.filtered_paths_len++;
+    reference_monitor.filtered_paths = krealloc(reference_monitor.filtered_paths, (reference_monitor.filtered_paths_len) * sizeof(struct dentry *), GFP_KERNEL);
+    if (reference_monitor.filtered_paths == NULL)
     {
         printk("%s: error allocating memory for paths.\n", MODNAME);
         return -1;
     }
 
-    len = strlen(full_path);
-    reference_monitor.paths[reference_monitor.paths_len - 1] = kmalloc(len, GFP_KERNEL);
-    if (reference_monitor.paths[reference_monitor.paths_len - 1] == NULL)
-    {
-        printk("%s: error allocating memory for new path.\n", MODNAME);
-        return -1;
-    }
-
-    sprintf(reference_monitor.paths[reference_monitor.paths_len - 1], full_path, len);
+    reference_monitor.filtered_paths[reference_monitor.filtered_paths_len - 1] = dentry;
     return 0;
 }
 
 
-int rm_path(const char *new_path){
-    int ret;
-    char full_path[MAX_LEN];
+int rm_path(const char *path_to_remove){
+    /* int ret; */
+    /* char full_path[MAX_LEN]; */
     int already_present_path;
-    char *last_element;
+    struct dentry *last_element;
+    struct dentry *d_path_to_remove = get_dentry_from_path(path_to_remove);
 
 
-    ret = get_user_full_path(new_path, strlen(new_path), full_path);
-    if (ret < 0){
-        printk("%s: full path problem.\n",MODNAME);
-        return -1;
-    }
-
-    /* checking if trying to remove PASS_FILE: */
-    if (strcmp(full_path, PASS_FILE) == 0){
-        printk("%s: error: cannot remove this path\n",MODNAME);
+    if (d_path_to_remove == NULL){
+        printk("%s: error: retrieving dentry from %s\n",MODNAME, path_to_remove);
         return -1;
     }
 
     /* checking if already present: */
-    already_present_path = find_already_present_path(full_path);
+    already_present_path = find_already_present_path(d_path_to_remove);
     if (already_present_path < 0){
         printk("%s: error: path not present\n",MODNAME);
         return -1;
     }
-
 
     /*
         [a b c d e ] ---> [a b x d e]
         i just need to move "e" where c was: [a b e d]. I don't care about order
     */
     // checking if i didnt remove the last element
-    if (already_present_path != reference_monitor.paths_len - 1){
-        last_element = reference_monitor.paths[reference_monitor.paths_len - 1];
-        sprintf(reference_monitor.paths[already_present_path], last_element, strlen(last_element));
+    if (already_present_path != reference_monitor.filtered_paths_len - 1){
+        last_element = reference_monitor.filtered_paths[reference_monitor.filtered_paths_len - 1];
+        reference_monitor.filtered_paths[already_present_path] = last_element;
     }
 
     // free last element
-    kfree(reference_monitor.paths[reference_monitor.paths_len - 1]);
-    reference_monitor.paths_len--;
-    reference_monitor.paths = krealloc(reference_monitor.paths, (reference_monitor.paths_len) * sizeof(char *), GFP_KERNEL);
-    if (reference_monitor.paths == NULL)
+    reference_monitor.filtered_paths_len--;
+    reference_monitor.filtered_paths = krealloc(reference_monitor.filtered_paths, (reference_monitor.filtered_paths_len) * sizeof(struct dentry *), GFP_KERNEL);
+    if (reference_monitor.filtered_paths == NULL)
     {
         printk("%s: error freeding memory for paths.\n", MODNAME);
         return -1;
     }
 
     return 0;
+}
+
+
+char *get_path(int index){
+    return full_path_from_dentry(reference_monitor.filtered_paths[index]);
 }
 
 
@@ -536,13 +502,14 @@ static struct kprobe kp_mkdir = {
         .pre_handler = mkdir_wrapper,
 };
 
-static struct kprobe kp_tmp = {
-        .symbol_name =  "vfs_mkdir",
-        .pre_handler = tmp_wrapper,
-};
+/* static struct kprobe kp_tmp = { */
+/*         .symbol_name =  "vfs_mkdir", */
+/*         .pre_handler = tmp_wrapper, */
+/* }; */
 
 static int init_reference_monitor(void) {
 	int ret;
+    struct dentry *pass_file_dentry;
 	printk("%s: initializing\n",MODNAME);
 	ret = register_kprobe(&kp);
     if (ret < 0) {
@@ -564,24 +531,31 @@ static int init_reference_monitor(void) {
         printk("%s: kprobe mkdir registering failed, returned %d\n",MODNAME,ret);
         return ret;
     }
-    ret = register_kprobe(&kp_tmp);
-    if (ret < 0) {
-        printk("%s: kprobe tmp registering failed, returned %d\n",MODNAME,ret);
-        return ret;
-    }
+    /* ret = register_kprobe(&kp_tmp); */
+    /* if (ret < 0) { */
+    /*     printk("%s: kprobe tmp registering failed, returned %d\n",MODNAME,ret); */
+    /*     return ret; */
+    /* } */
 
 
     // init reference_monitor struct
     reference_monitor.state = ON;
-    reference_monitor.paths_len = 1;
-    reference_monitor.paths = kmalloc( (reference_monitor.paths_len) * sizeof(char *), GFP_KERNEL);
-    if (reference_monitor.paths == NULL){
+    reference_monitor.filtered_paths_len = 1;
+    reference_monitor.filtered_paths = kmalloc( sizeof(struct dentry *), GFP_KERNEL);
+    if (reference_monitor.filtered_paths == NULL){
         printk("%s: error initializing paths.\n",MODNAME);
         return -1;
     }
-    reference_monitor.paths[reference_monitor.paths_len - 1] = PASS_FILE;
+    pass_file_dentry = get_dentry_from_path(PASS_FILE);
+    if (pass_file_dentry == NULL){
+        printk("%s: error retrieving dentry of pass_file\n", MODNAME);
+        return -1;
+    }
+    reference_monitor.filtered_paths[0] = pass_file_dentry;
+
     reference_monitor.add_path = add_path;
     reference_monitor.rm_path = rm_path;
+    reference_monitor.get_path = get_path;
 
     // init the password:
     ret = read_pass_file();
@@ -602,11 +576,11 @@ static void exit_reference_monitor(void) {
     unregister_kprobe(&kp_mkdir);
     unregister_kprobe(&kp_rmdir);
     unregister_kprobe(&kp_unlink);
-    unregister_kprobe(&kp_tmp);
+    /* unregister_kprobe(&kp_tmp); */
     //Be carefull, this unregister assumes that none will need to run the hook function after this nodule
     //is unmounted
     printk("%s: hook module unloaded\n", MODNAME);
-    kfree(reference_monitor.paths);
+    kfree(reference_monitor.filtered_paths);
 }
 module_init(init_reference_monitor);
 module_exit(exit_reference_monitor);

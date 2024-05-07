@@ -17,9 +17,10 @@ typedef struct _reference_monitor_t {
     // this will keep sha256 pass
     char hashed_pass[32];
     spinlock_t lock;
-    char **paths;
-    int paths_len;
+    struct dentry **filtered_paths;
+    int filtered_paths_len;
     int (*add_path)(const char *new_path);
     int (*rm_path)(const char *path);
+    char* (*get_path)(int index);
 } reference_monitor_t;
 #endif

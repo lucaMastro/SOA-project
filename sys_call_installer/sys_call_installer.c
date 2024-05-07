@@ -109,6 +109,7 @@ __SYSCALL_DEFINEx(2, _add_path, char* __user, monitor_pass, char* __user, new_pa
 
     int ret;
     char *user_pass;
+    char *k_new_path;
     ssize_t len;
     int euid;
 
@@ -143,7 +144,20 @@ __SYSCALL_DEFINEx(2, _add_path, char* __user, monitor_pass, char* __user, new_pa
     }
 
     /* adding path */
-    ret = reference_monitor.add_path(new_path);
+    len = strnlen_user(new_path, MAX_PASS_LEN);
+    k_new_path = (char*) kmalloc(sizeof(char) * len, GFP_KERNEL);
+    if (k_new_path == NULL){
+        printk("%s: error allocating buffer for pass digest\n", MODNAME);
+        return -1;
+    }
+
+    ret = copy_from_user(k_new_path, new_path, len);
+	if(ret != 0) {
+        printk("%s: error: copy_from_user k_new_path\n",MODNAME);
+        return -1;
+    }
+
+    ret = reference_monitor.add_path(k_new_path);
     if (ret < 0){
         printk("%s: error adding path\n",MODNAME);
         return -2;
@@ -163,6 +177,7 @@ __SYSCALL_DEFINEx(3, _get_paths, char* __user, monitor_pass, char** __user, buff
     char *user_pass;
     ssize_t len;
     int euid;
+    char *current_path;
 
     /* euid check: */
     euid = current->cred->euid.val;
@@ -191,13 +206,16 @@ __SYSCALL_DEFINEx(3, _get_paths, char* __user, monitor_pass, char** __user, buff
         return -1;
     }
 
-    min = max_num_of_path_to_retrieve < reference_monitor.paths_len ? max_num_of_path_to_retrieve : reference_monitor.paths_len;
+    min = max_num_of_path_to_retrieve < reference_monitor.filtered_paths_len ? max_num_of_path_to_retrieve : reference_monitor.filtered_paths_len;
 
     for (i=0; i < min; i++){
-        ret = copy_to_user(buffer[i], reference_monitor.paths[i], strlen(reference_monitor.paths[i]));
+        current_path = reference_monitor.get_path(i);
+        printk("DEBUG: %s\n", current_path);
+        ret = copy_to_user(buffer[i], current_path, strlen(current_path));
         if (ret > 0){
-            printk("%s: not fully deliver %s\n", MODNAME, reference_monitor.paths[i]);
+            printk("%s: not fully deliver %s\n", MODNAME, current_path);
         }
+        kfree(current_path);
     }
 
     return 0;

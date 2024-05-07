@@ -43,7 +43,7 @@ int main(int argc, char** argv){
     setegid(0);
 
     new_path = (char*) argv[1];
-    rm_path(new_hash, new_path);
+    rm_path("asd", new_path);
 
     return 0;
 
