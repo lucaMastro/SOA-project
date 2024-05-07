@@ -436,6 +436,7 @@ int rm_path(const char *path_to_remove){
     }
 
     // free last element
+    dput(reference_monitor.filtered_paths[reference_monitor.filtered_paths_len - 1]);
     reference_monitor.filtered_paths_len--;
     reference_monitor.filtered_paths = krealloc(reference_monitor.filtered_paths, (reference_monitor.filtered_paths_len) * sizeof(struct dentry *), GFP_KERNEL);
     if (reference_monitor.filtered_paths == NULL)
