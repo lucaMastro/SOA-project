@@ -63,6 +63,46 @@ struct open_flags {
 };
 
 
+int isDir(const char *filename){
+    struct path path;
+    int error;
+    struct inode *inode;
+
+    error = kern_path(filename,LOOKUP_FOLLOW, &path);
+    if(error)
+        return -1;
+
+    inode = path.dentry -> d_inode;
+    return S_ISDIR(inode->i_mode);
+}
+
+
+
+int mkdir_wrapper(struct kprobe *ri, struct pt_regs *regs){
+    /* int dfd = (int) regs -> di; */
+    /* struct filename *filename =(struct filename*) regs -> si; */
+
+	/* const __user char *user_path = filename->uptr; */
+	/* const char *real_path = filename->name; */
+	/* char *dir; */
+    /* printk("%s: AUDIT INVOKED mkdir: %s\n", MODNAME, real_path); */
+    return 0;
+}
+
+int rmdir_wrapper(struct kprobe *ri, struct pt_regs *regs){
+    /* int dfd = (int) regs -> di; */
+    /* struct filename *filename =(struct filename*) regs -> si; */
+
+	/* const __user char *user_path = filename->uptr; */
+	/* const char *real_path = filename->name; */
+	/* char *dir; */
+    /* printk("%s: AUDIT INVOKED rmdir: %s\n", MODNAME, real_path); */
+    return 0;
+}
+
+
+
+
 
 
 /* stack overflow:
@@ -111,6 +151,88 @@ int find_already_present_path(char *path_to_find){
 }
 
 
+struct inode *get_parent_inode(struct dentry *child_dentry) {
+    struct dentry *parent_dentry;
+    struct inode *parent_inode = NULL;
+    char buf[256];
+
+    // Controllo se child_dentry è NULL
+    if (!child_dentry)
+        return NULL;
+
+    // Acquisisco la struttura dentry del child_dentry
+    parent_dentry = dget_parent(child_dentry);
+    if (parent_dentry) {
+        // Estraggo l'inode della directory genitore
+        parent_inode = d_inode(parent_dentry);
+        dentry_path_raw(parent_dentry, buf, 256);
+        printk("parent_inode name (its a prova): %s\n", buf);
+        // Rilascio la struttura dentry
+        dput(parent_dentry);
+    }
+
+    return parent_inode;
+}
+
+
+
+char *full_path_from_dentry(struct dentry *dentry) {
+    char *path = kmalloc(MAX_LEN, GFP_KERNEL);
+    struct dentry *parent = dentry -> d_parent;
+    char *name = dentry->d_name.name;
+    int name_len = strlen(name);
+    int path_len = name_len;
+
+    if (!path)
+        return NULL;
+
+    memcpy(path, name, name_len);
+
+    /*
+        parent of root is root itself. Using following condition, the add of starting '//' is prevented:
+        in fact, the loop adds <parent_name>/, but if parent is '/' itself, it will add '//'.
+        With this condition, last iteration will be with parent -> d_parent == '/', meaning that not
+        initial '/' will be in the path at the end of loop.
+    */
+    while (parent != parent -> d_parent) {
+        printk("%s: starting with: %s. dentry: %px, parent: %px\n", MODNAME, path, dentry, parent);
+        const char *parent_name = parent->d_name.name;
+        int parent_name_len = strlen(parent_name);
+
+        if (path_len + parent_name_len + 2 > MAX_LEN) {
+            kfree(path);
+            return NULL; // Il percorso è troppo lungo
+        }
+
+        // Costruisci il percorso completo aggiungendo il nome della directory genitore
+        memmove(path + parent_name_len + 1, path, path_len + 1);
+        memcpy(path, parent_name, parent_name_len);
+        path[parent_name_len] = '/';
+        path_len += parent_name_len + 1;
+
+        // Vai alla directory genitore
+        dentry = parent;
+        parent = dentry -> d_parent;
+        /* dput(dentry); */
+        printk("%s: ending with: %s\n", MODNAME, path);
+    }
+
+    // adding starting '/':
+    memmove(path + 1, path, path_len + 1);
+    path[0] = '/';
+
+    return path;
+}
+
+
+
+int tmp_wrapper(struct kprobe *ri, struct pt_regs *regs){
+
+    struct inode *dir = (struct inode*) regs -> si;
+    struct dentry *dentry = (struct dentry*) regs-> dx;
+    printk("tmp_wrapper: TMP WRAPPER prova: %px, dentry_name %s, parent_inode: %px, dentry_full_path: %s\n",  dir, dentry -> d_name.name, dentry -> d_parent -> d_inode, full_path_from_dentry(dentry));
+    return 0;
+}
 
 
 int sys_open_wrapper(struct kprobe *ri, struct pt_regs *regs){
@@ -125,12 +247,41 @@ int sys_open_wrapper(struct kprobe *ri, struct pt_regs *regs){
     char full_path[MAX_LEN];
     int ret;
 
+    int write_mode = O_RDWR | O_WRONLY;
+    int creat_mode = O_CREAT | O_TMPFILE;
+
     struct filename *file_name =(struct filename*) regs -> si;
     struct open_flags *op = (struct open_flags*) (regs -> dx);
 
+    dfd = (int) regs -> di;
+    flags = op -> open_flag;
+    //umode_t mode = op -> mode;
+
+
+    path = (const char*) file_name -> name;
+    if (strcmp(dmesg_path, path) == 0)
+        return 0;
+
+
+    struct path file_path;
+    struct inode *inode;
+    ret = kern_path(path, 0, &file_path);
+    /* ret = kern_path(full_path, 0, &file_path); */
+    if (ret != 0){
+        printk("sys_open_wrapper_tmp: for %s filename_lookup is %d\n", path, ret);
+    }
+    else{
+        inode = file_path.dentry->d_inode;
+        printk("sys_open_wrapper_tmp: for path: %s, inode addr: %px; name: %s\n", path, inode, file_path.dentry ->d_iname);
+        /* printk("sys_open_wrapper: for path: %s, parent-inode addr: %px", path, get_parent_inode(file_path.dentry)); */
+    }
+
+
+
+
     // if not write mode, just return
     if (
-         (!(flags & O_RDWR) && !(flags & O_WRONLY)) ||
+         (!(flags & write_mode) && !(flags & creat_mode)) ||
          (reference_monitor.state == OFF) ||
          (reference_monitor.state == RECOFF)
         )
@@ -138,20 +289,17 @@ int sys_open_wrapper(struct kprobe *ri, struct pt_regs *regs){
         return 0;
     }
 
-    dfd = (int) regs -> di;
-    flags = op -> open_flag;
-    //umode_t mode = op -> mode;
 
-    path = (const char*) file_name -> name;
-    if (strcmp(dmesg_path, path) == 0)
-        return 0;
+    /* path = (const char*) file_name -> name; */
+    /* if (strcmp(dmesg_path, path) == 0) */
+    /*     return 0; */
 
     usr_path = (const char*) file_name -> uptr;
 
     // getting full path:
-    ret = get_user_full_path(usr_path, strlen(usr_path), full_path);
+    ret = get_user_full_path(usr_path, strnlen_user(usr_path, MAX_LEN), full_path);
     if (ret < 0) {
-        printk("%s: get_user_full_path problem with path: %s\n", MODNAME, usr_path);
+        /* printk("%s: get_user_full_path problem with path: %s\n", MODNAME, usr_path); */
         sprintf(full_path, path, strlen(path));
     }
 
@@ -198,6 +346,40 @@ int sys_open_wrapper(struct kprobe *ri, struct pt_regs *regs){
 }
 
 
+int unlink_wrapper(struct kprobe *ri, struct pt_regs *regs){
+    struct filename *filename =(struct filename*) regs -> si;
+
+	const __user char *usr_path = filename->uptr;
+	const char *k_path = filename->name;
+    char full_path[MAX_LEN];
+    char * curr_path;
+    int i;
+    int ret;
+    // /dummy/path/<sha256("/dummy/path")>
+    /* char *dummy_path = "/dummy/path/71ed8baea43fa1c424bbd9ab5af14973b6fd32542809e76002c5c2457b152a5e"; */
+
+
+    ret = get_user_full_path(usr_path, strnlen_user(usr_path, MAX_LEN), full_path);
+    if (ret < 0) {
+        /* printk("%s: get_user_full_path problem with path: %s\n", MODNAME, usr_path); */
+        sprintf(full_path, k_path, strlen(k_path));
+    }
+
+    for (i = 0; i < reference_monitor.paths_len; i++){
+        curr_path = reference_monitor.paths[i];
+        if (strcmp(full_path, curr_path) == 0 ){
+            /* filename -> name = dummy_path; */
+            /* regs -> si = filename; */
+            regs -> si = (long unsigned int) NULL;
+	        printk("%s: rm on path: %s has been rejected. It will cause a segfault\n",MODNAME, full_path);
+            return 0;
+        }
+    }
+    return 0;
+}
+
+
+
 int add_path(const char __user *new_path){
     /*
         @TODO: prevent adding the-file path
@@ -207,6 +389,7 @@ int add_path(const char __user *new_path){
     /* char full_path[MAX_LEN]; */
     char *full_path;
     int already_present_path;
+    int is_dir;
 
     full_path = (char*)kmalloc(sizeof(char)*MAX_LEN, GFP_KERNEL);
     /* ap = get_absolute_path(new_path, full_path); */
@@ -222,6 +405,9 @@ int add_path(const char __user *new_path){
         return -1;
     }
 
+
+    is_dir = isDir(full_path);
+    printk("%s: is_dir = %d\n", MODNAME, is_dir);
     /* checking if already present: */
     already_present_path = find_already_present_path(full_path);
     if (already_present_path >= 0){
@@ -335,7 +521,25 @@ static struct kprobe kp = {
     .pre_handler = sys_open_wrapper,
 };
 
+static struct kprobe kp_unlink = {
+        .symbol_name =  "do_unlinkat",
+        .pre_handler = unlink_wrapper,
+};
 
+static struct kprobe kp_rmdir = {
+        .symbol_name =  "do_rmdir",
+        .pre_handler = rmdir_wrapper,
+};
+
+static struct kprobe kp_mkdir = {
+        .symbol_name =  "do_mkdirat",
+        .pre_handler = mkdir_wrapper,
+};
+
+static struct kprobe kp_tmp = {
+        .symbol_name =  "vfs_mkdir",
+        .pre_handler = tmp_wrapper,
+};
 
 static int init_reference_monitor(void) {
 	int ret;
@@ -345,6 +549,27 @@ static int init_reference_monitor(void) {
         printk("%s: kprobe registering failed, returned %d\n",MODNAME,ret);
         return ret;
     }
+	ret = register_kprobe(&kp_unlink);
+    if (ret < 0) {
+        printk("%s: kprobe unlink registering failed, returned %d\n",MODNAME,ret);
+        return ret;
+    }
+    ret = register_kprobe(&kp_rmdir);
+    if (ret < 0) {
+        printk("%s: kprobe rmdir registering failed, returned %d\n",MODNAME,ret);
+        return ret;
+    }
+    ret = register_kprobe(&kp_mkdir);
+    if (ret < 0) {
+        printk("%s: kprobe mkdir registering failed, returned %d\n",MODNAME,ret);
+        return ret;
+    }
+    ret = register_kprobe(&kp_tmp);
+    if (ret < 0) {
+        printk("%s: kprobe tmp registering failed, returned %d\n",MODNAME,ret);
+        return ret;
+    }
+
 
     // init reference_monitor struct
     reference_monitor.state = ON;
@@ -374,6 +599,10 @@ static int init_reference_monitor(void) {
 
 static void exit_reference_monitor(void) {
     unregister_kprobe(&kp);
+    unregister_kprobe(&kp_mkdir);
+    unregister_kprobe(&kp_rmdir);
+    unregister_kprobe(&kp_unlink);
+    unregister_kprobe(&kp_tmp);
     //Be carefull, this unregister assumes that none will need to run the hook function after this nodule
     //is unmounted
     printk("%s: hook module unloaded\n", MODNAME);

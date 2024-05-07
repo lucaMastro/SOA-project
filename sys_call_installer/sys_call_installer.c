@@ -44,7 +44,7 @@ extern sys_call_helper_t sys_call_helper;
 #define HASH_FUNC "sha256"
 #define HASH_SIZE 32
 #define MAX_PASS_LEN 256
-#define CHECK_EUID 1
+#define CHECK_EUID 0
 
 
 /* --------------------------------------------------------- */
