@@ -55,7 +55,6 @@ int compute_hash(char *input_string, int input_size, char *output_buffer) {
     struct shash_desc *desc;
     int ret;
 
-    printk("%s: compute_hash start\n",MODNAME);
     tfm = crypto_alloc_shash(HASH_FUNC, 0, 0);
     if (IS_ERR(tfm)) {
         printk("%s: error initializing transform\n", MODNAME);
@@ -250,13 +249,13 @@ __SYSCALL_DEFINEx(2, _rm_path, char* __user, monitor_pass, char* __user, path_to
     }
 
     ret = copy_from_user(user_pass, monitor_pass, len);
-    kfree(user_pass);
 	if(ret != 0) {
         printk("%s: error: copy_from_user compare passwd\n",MODNAME);
         return -1;
     }
     /* checking password: */
     ret = check_password(user_pass, len - 1);
+    kfree(user_pass);
     if (ret != 0){
         printk("%s: error: wrong monitor password in rm_paths\n",MODNAME);
         return -1;

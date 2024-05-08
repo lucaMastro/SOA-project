@@ -54,7 +54,7 @@ reference_monitor_t reference_monitor;
 #define IS_MON_ON() reference_monitor.state & 0x1
 #define IS_REC_ON() reference_monitor.state & 0x2
 
-const char *dmesg_path="/run/log/journal/34806022a1ad45778b55aa795580cc74/system.journal";
+const char *dmesg_path="/run/log/journal/";
 
 struct open_flags {
 	int open_flag;
@@ -170,10 +170,10 @@ char *full_path_from_dentry(struct dentry *dentry) {
         path[parent_name_len] = '/';
         path_len += parent_name_len + 1;
 
-        // Vai alla directory genitore
+        dput(dentry);
         dentry = parent;
+        dput(parent);
         parent = dentry -> d_parent;
-        /* dput(dentry); */
     }
 
     // adding starting '/':
@@ -182,6 +182,49 @@ char *full_path_from_dentry(struct dentry *dentry) {
 
     return path;
 }
+
+
+
+/**************************************************/
+int global_checker(struct filename *file_name){
+
+    int dfd;
+    int flags;
+    const char *path;
+    struct dentry *d_path;
+    struct dentry *parent;
+    char *full_path;
+
+    path = (const char*) file_name -> name;
+    /* if (strstr(path, dmesg_path) != NULL) */
+    /*     return 0; */
+
+    d_path = get_dentry_from_path(path);
+    if (d_path == NULL){
+        /* printk("%s: failed getting dentry from path %s\n",MODNAME, path); */
+        return 0;
+    }
+
+
+    // scan all dparent tree:
+    parent = d_path -> d_parent;
+    while (d_path != parent) {
+        if (find_already_present_path(d_path) >= 0 ){
+            full_path = full_path_from_dentry(d_path);
+            printk("%s: found path %s in filtered list. Write operation will be rejected\n",MODNAME, full_path);
+            kfree(full_path);
+            return 1;
+        }
+        d_path = parent;
+        parent = d_path -> d_parent;
+    }
+	return 0;
+}
+
+
+/**************************************************/
+
+
 
 
 
@@ -196,7 +239,7 @@ char *full_path_from_dentry(struct dentry *dentry) {
 
 int sys_open_wrapper(struct kprobe *ri, struct pt_regs *regs){
 
-    int dfd;
+    /* int dfd; */
     int flags;
     const char *path;
 
@@ -208,21 +251,10 @@ int sys_open_wrapper(struct kprobe *ri, struct pt_regs *regs){
 
     struct dentry *d_path;
 
-    dfd = (int) regs -> di;
     flags = op -> open_flag;
-    //umode_t mode = op -> mode;
+    /* umode_t mode = op -> mode; */
+    /* dfd = (int) regs -> di; */
 
-
-    path = (const char*) file_name -> name;
-    if (strcmp(dmesg_path, path) == 0)
-        return 0;
-
-
-    d_path = get_dentry_from_path(path);
-    if (d_path == NULL){
-        /* printk("%s: failed getting dentry from path %s\n",MODNAME, path); */
-        return 0;
-    }
 
     // if not write mode or state is *off, just return
     if (
@@ -233,9 +265,9 @@ int sys_open_wrapper(struct kprobe *ri, struct pt_regs *regs){
         return 0;
     }
 
-    if (find_already_present_path(d_path) >= 0 ){
+    if (global_checker(file_name)){
         op -> open_flag = O_RDONLY;
-        printk("%s: write on path: %s has been rejected\n",MODNAME, path);
+        /* printk("%s: write on path: %s has been rejected\n",MODNAME, path); */
         return 0;
     }
 
@@ -481,7 +513,7 @@ static int init_reference_monitor(void) {
     }
 
     // init reference_monitor struct
-    reference_monitor.state = ON;
+    reference_monitor.state = RECON;
     reference_monitor.filtered_paths_len = 1;
     reference_monitor.filtered_paths = kmalloc( sizeof(struct dentry *), GFP_KERNEL);
     if (reference_monitor.filtered_paths == NULL){
