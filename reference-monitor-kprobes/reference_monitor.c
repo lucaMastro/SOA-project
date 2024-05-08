@@ -94,27 +94,7 @@ struct dentry *get_dentry_from_path(const char *path){
 }
 
 
-int mkdir_wrapper(struct kprobe *ri, struct pt_regs *regs){
-    /* int dfd = (int) regs -> di; */
-    /* struct filename *filename =(struct filename*) regs -> si; */
 
-	/* const __user char *user_path = filename->uptr; */
-	/* const char *real_path = filename->name; */
-	/* char *dir; */
-    /* printk("%s: AUDIT INVOKED mkdir: %s\n", MODNAME, real_path); */
-    return 0;
-}
-
-int rmdir_wrapper(struct kprobe *ri, struct pt_regs *regs){
-    /* int dfd = (int) regs -> di; */
-    /* struct filename *filename =(struct filename*) regs -> si; */
-
-	/* const __user char *user_path = filename->uptr; */
-	/* const char *real_path = filename->name; */
-	/* char *dir; */
-    /* printk("%s: AUDIT INVOKED rmdir: %s\n", MODNAME, real_path); */
-    return 0;
-}
 
 
 /*
@@ -170,9 +150,7 @@ char *full_path_from_dentry(struct dentry *dentry) {
         path[parent_name_len] = '/';
         path_len += parent_name_len + 1;
 
-        dput(dentry);
         dentry = parent;
-        dput(parent);
         parent = dentry -> d_parent;
     }
 
@@ -186,24 +164,12 @@ char *full_path_from_dentry(struct dentry *dentry) {
 
 
 /**************************************************/
-int global_checker(struct filename *file_name){
+int global_checker(struct dentry *d_path){
 
-    int dfd;
-    int flags;
     const char *path;
-    struct dentry *d_path;
     struct dentry *parent;
     char *full_path;
 
-    path = (const char*) file_name -> name;
-    /* if (strstr(path, dmesg_path) != NULL) */
-    /*     return 0; */
-
-    d_path = get_dentry_from_path(path);
-    if (d_path == NULL){
-        /* printk("%s: failed getting dentry from path %s\n",MODNAME, path); */
-        return 0;
-    }
 
 
     // scan all dparent tree:
@@ -211,7 +177,7 @@ int global_checker(struct filename *file_name){
     while (d_path != parent) {
         if (find_already_present_path(d_path) >= 0 ){
             full_path = full_path_from_dentry(d_path);
-            printk("%s: found path %s in filtered list. Write operation will be rejected\n",MODNAME, full_path);
+            printk("%s: found path %s in filtered list for path %s. Write operation will be rejected. This may cause a SEGFAULT\n",MODNAME, full_path, path);
             kfree(full_path);
             return 1;
         }
@@ -226,35 +192,23 @@ int global_checker(struct filename *file_name){
 
 
 
-
-
-/* int tmp_wrapper(struct kprobe *ri, struct pt_regs *regs){ */
-
-/*     struct inode *dir = (struct inode*) regs -> si; */
-/*     struct dentry *dentry = (struct dentry*) regs-> dx; */
-/*     printk("tmp_wrapper: TMP WRAPPER prova: %px, dentry_name %s, parent_inode: %px, dentry_full_path: %s\n",  dir, dentry -> d_name.name, dentry -> d_parent -> d_inode, full_path_from_dentry(dentry)); */
-/*     return 0; */
-/* } */
-
-
 int sys_open_wrapper(struct kprobe *ri, struct pt_regs *regs){
 
     /* int dfd; */
     int flags;
-    const char *path;
-
     int write_mode = O_RDWR | O_WRONLY;
     int creat_mode = O_CREAT | O_TMPFILE;
-
     struct filename *file_name =(struct filename*) regs -> si;
     struct open_flags *op = (struct open_flags*) (regs -> dx);
-
+    const char *path;
     struct dentry *d_path;
 
     flags = op -> open_flag;
     /* umode_t mode = op -> mode; */
     /* dfd = (int) regs -> di; */
 
+    if (strstr(file_name -> name, dmesg_path) != NULL)
+        return 0;
 
     // if not write mode or state is *off, just return
     if (
@@ -265,7 +219,20 @@ int sys_open_wrapper(struct kprobe *ri, struct pt_regs *regs){
         return 0;
     }
 
-    if (global_checker(file_name)){
+
+    path = (const char*) file_name -> name;
+    if (strstr(path, dmesg_path) != NULL)
+        return 0;
+
+    /* printk("DEBUG: path in global: %s\n", path); */
+    d_path = get_dentry_from_path(path);
+    if (d_path == NULL){
+        /* printk("%s: failed getting dentry from path %s\n",MODNAME, path); */
+        return 0;
+    }
+
+    /* printk("DEBUG: path in sys_wrapper: %s\n", file_name -> name); */
+    if (global_checker(d_path)){
         op -> open_flag = O_RDONLY;
         /* printk("%s: write on path: %s has been rejected\n",MODNAME, path); */
         return 0;
@@ -305,37 +272,97 @@ int sys_open_wrapper(struct kprobe *ri, struct pt_regs *regs){
 
 
 int unlink_wrapper(struct kprobe *ri, struct pt_regs *regs){
-    /* struct filename *filename =(struct filename*) regs -> si; */
+    struct filename *filename =(struct filename*) regs -> si;
+    const char *path;
+    struct dentry *d_path;
 
-	/* const __user char *usr_path = filename->uptr; */
-	/* const char *k_path = filename->name; */
-    /* char full_path[MAX_LEN]; */
-    /* char * curr_path; */
-    /* int i; */
-    /* int ret; */
-    /* // /dummy/path/<sha256("/dummy/path")> */
-    /* /1* char *dummy_path = "/dummy/path/71ed8baea43fa1c424bbd9ab5af14973b6fd32542809e76002c5c2457b152a5e"; *1/ */
+    path = (const char*) filename -> name;
+    if (strstr(path, dmesg_path) != NULL)
+        return 0;
 
-
-    /* ret = get_user_full_path(usr_path, strnlen_user(usr_path, MAX_LEN), full_path); */
-    /* if (ret < 0) { */
-    /*     /1* printk("%s: get_user_full_path problem with path: %s\n", MODNAME, usr_path); *1/ */
-    /*     sprintf(full_path, k_path, strlen(k_path)); */
-    /* } */
-
-    /* for (i = 0; i < reference_monitor.filtered_paths_len; i++){ */
-    /*     curr_path = reference_monitor.filtered_paths[i]; */
-    /*     if (strcmp(full_path, curr_path) == 0 ){ */
-    /*         /1* filename -> name = dummy_path; *1/ */
-    /*         /1* regs -> si = filename; *1/ */
-    /*         regs -> si = (long unsigned int) NULL; */
-	        /* printk("%s: rm on path: %s has been rejected. It will cause a segfault\n",MODNAME, full_path); */
-    /*         return 0; */
-    /*     } */
-    /* } */
+    /* printk("DEBUG: path in global: %s\n", path); */
+    d_path = get_dentry_from_path(path);
+    if (d_path == NULL){
+        /* printk("%s: failed getting dentry from path %s\n",MODNAME, path); */
+        return 0;
+    }
+    if (global_checker(d_path)){
+        regs -> si = (long unsigned int) NULL;
+        /* printk("%s: write on path: %s has been rejected\n",MODNAME, path); */
+        return 0;
+    }
     return 0;
 }
 
+int rmdir_wrapper(struct kprobe *ri, struct pt_regs *regs){
+    /* int dfd = (int) regs -> di; */
+    struct filename *filename =(struct filename*) regs -> si;
+    const char *path;
+    struct dentry *d_path;
+
+    path = (const char*) filename -> name;
+    if (strstr(path, dmesg_path) != NULL)
+        return 0;
+
+    /* printk("DEBUG: path in global: %s\n", path); */
+    d_path = get_dentry_from_path(path);
+    if (d_path == NULL){
+        /* printk("%s: failed getting dentry from path %s\n",MODNAME, path); */
+        return 0;
+    }
+    if (global_checker(d_path)){
+        regs -> si = (long unsigned int) NULL;
+        /* printk("%s: write on path: %s has been rejected\n",MODNAME, path); */
+        return 0;
+    }
+    return 0;
+}
+
+/*
+    the correct inode and dentry don't exist yet. Then check the path without the last
+    token: /a/seuqence/of/token.
+*/
+int mkdir_wrapper(struct kprobe *ri, struct pt_regs *regs){
+    struct filename *filename =(struct filename*) regs -> si;
+
+    const char *path;
+    char *reduced_path;
+    char *curr;
+
+    struct dentry *d_path;
+
+    /* printk("DEBUG: mkdir con path: %s\n", filename -> name); */
+    path = (const char*) filename -> name;
+    if (strstr(path, dmesg_path) != NULL)
+        return 0;
+
+    reduced_path = kstrdup(path, GFP_KERNEL);
+    /* note: start from len - 2, because last char may be a '/', but it has be to excluded
+        /some/path/ ---> /some
+    */
+    for (curr = reduced_path + strlen(reduced_path) - 2; curr != reduced_path; curr--){
+        if (*curr == '/'){
+            // make substitution
+            *curr = '\0';
+            break;
+        }
+    }
+
+    d_path = get_dentry_from_path(reduced_path);
+    if (d_path == NULL){
+        /* printk("%s: failed getting dentry from path %s\n",MODNAME, path); */
+        return 0;
+    }
+    kfree(reduced_path);
+
+    if (global_checker(d_path)){
+        regs -> si = (long unsigned int) NULL;
+        return 0;
+    }
+    return 0;
+}
+
+/*************************************************************************************/
 
 
 int add_path(const char *new_path){
