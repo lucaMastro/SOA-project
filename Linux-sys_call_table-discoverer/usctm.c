@@ -227,7 +227,7 @@ int install_syscall(unsigned long *new_sys_call_addr){
 
     // updating
     sys_call_helper.last_entry_used++;
-	printk("%s: a sys_call has been installed as a trial on the sys_call_table at displacement %d\n",MODNAME,sct_index);
+	/* printk("%s: a sys_call has been installed as a trial on the sys_call_table at displacement %d\n",MODNAME,sct_index); */
     return sct_index;
 }
 

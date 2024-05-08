@@ -51,6 +51,8 @@ MODULE_DESCRIPTION("see the README file");
 reference_monitor_t reference_monitor;
 
 #define MAX_LEN 256
+#define IS_MON_ON() reference_monitor.state & 0x1
+#define IS_REC_ON() reference_monitor.state & 0x2
 
 const char *dmesg_path="/run/log/journal/34806022a1ad45778b55aa795580cc74/system.journal";
 
@@ -115,53 +117,12 @@ int rmdir_wrapper(struct kprobe *ri, struct pt_regs *regs){
 }
 
 
-
-
-
-
-/* stack overflow:
-    https://stackoverflow.com/questions/61500432/relative-path-to-absolute-path-in-linux-kernel
-*/
-
-/* int get_user_full_path(const char *filename, ssize_t len, char *output_buffer){ */
-/*     struct path path; */
-/*     int dfd=AT_FDCWD; */
-/*     char *ret_ptr=NULL; */
-/*     int error = -EINVAL,flag=0; */
-/*     unsigned int lookup_flags = 0; */
-/*     char *tpath=kmalloc(1024,GFP_KERNEL); */
-/*     /1* if ((flag & ~(AT_SYMLINK_NOFOLLOW | AT_NO_AUTOMOUNT)) != 0) *1/ */
-/*     /1* { *1/ */
-/*     /1*     kfree(tpath); *1/ */
-/*     /1*     return error; *1/ */
-/*     /1* } *1/ */
-/*     if (!(flag & AT_SYMLINK_NOFOLLOW)) */
-/*         lookup_flags |= LOOKUP_FOLLOW; */
-
-/*     error = user_path_at(dfd, filename, lookup_flags, &path); */
-/*     if (error) */
-/*     { */
-/*         kfree(tpath); */
-/*         return error; */
-/*     } */
-/*     ret_ptr = d_path(&path, tpath, 1024); */
-/*     sprintf(output_buffer, ret_ptr, strlen(ret_ptr)); */
-/*     kfree(tpath); */
-/*     return 0; */
-/* } */
-
-
 /*
    returns position of dentry found, otherwise -1
 */
 int find_already_present_path(struct dentry *dentry_to_find){
     int i;
     struct dentry *curr;
-    /* printk("DEBUG: len: %d, dentry_to_find: %px\n", reference_monitor.filtered_paths_len, dentry_to_find); */
-
-    /* for (i = 0; i < reference_monitor.filtered_paths_len; i++){ */
-    /*     curr = reference_monitor.filtered_paths[i]; */
-    /* } */
     for (i = 0; i < reference_monitor.filtered_paths_len; i++){
         curr = reference_monitor.filtered_paths[i];
         if (curr -> d_inode == dentry_to_find-> d_inode)
@@ -235,15 +196,9 @@ char *full_path_from_dentry(struct dentry *dentry) {
 
 int sys_open_wrapper(struct kprobe *ri, struct pt_regs *regs){
 
-    /* int i; */
-    /* struct dentry *curr_path; */
-    // parsing parameters
     int dfd;
     int flags;
     const char *path;
-    /* const char *usr_path; */
-    /* char full_path[MAX_LEN]; */
-    /* int ret; */
 
     int write_mode = O_RDWR | O_WRONLY;
     int creat_mode = O_CREAT | O_TMPFILE;
@@ -268,11 +223,11 @@ int sys_open_wrapper(struct kprobe *ri, struct pt_regs *regs){
         /* printk("%s: failed getting dentry from path %s\n",MODNAME, path); */
         return 0;
     }
-    // if not write mode, just return
+
+    // if not write mode or state is *off, just return
     if (
          (!(flags & write_mode) && !(flags & creat_mode)) ||
-         (reference_monitor.state == OFF) ||
-         (reference_monitor.state == RECOFF)
+         ! (IS_MON_ON())
         )
     {
         return 0;
@@ -355,27 +310,15 @@ int add_path(const char *new_path){
     /*
         @TODO: prevent adding the-file path
     */
-    /* int ret; */
-    /* int len; */
-    /* char full_path[MAX_LEN]; */
-    /* char *full_path; */
     int already_present_path;
-    /* int is_dir; */
     struct dentry *dentry;
 
-    /* full_path = (char*)kmalloc(sizeof(char)*MAX_LEN, GFP_KERNEL); */
-    /* ap = get_absolute_path(new_path, full_path); */
-    /* if (ap == NULL){ */
-    /*     printk("%s: error in get_absolute_path\n", MODNAME); */
-    /*     return -1; */
-    /* } */
-    /* printk("%s: AUDIT: full_path: %s\nap: %px, %s\n",MODNAME, full_path, ap, ap); */
-
-    /* ret = get_user_full_path(new_path, strlen(new_path), full_path); */
-    /* if (ret < 0){ */
-    /*     printk("%s: full path problem.\n",MODNAME); */
-    /*     return -1; */
-    /* } */
+    // checking monitor state:
+    // cantinue only if 2nd bit is 1
+    if (! (IS_REC_ON())){
+        printk("%s: cannot reconfigure monitor\n", MODNAME);
+        return -1;
+    }
 
     dentry = get_dentry_from_path(new_path);
     if (dentry == NULL){
@@ -383,9 +326,7 @@ int add_path(const char *new_path){
         return -1;
     }
 
-    /* is_dir = isDir(full_path); */
-    /* printk("%s: is_dir = %d\n", MODNAME, is_dir); */
-    /* checking if already present: */
+    // checking if already present:
     already_present_path = find_already_present_path(dentry);
     if (already_present_path >= 0){
         printk("%s: error: path already present: %s\n",MODNAME, full_path_from_dentry(dentry));
@@ -406,19 +347,23 @@ int add_path(const char *new_path){
 
 
 int rm_path(const char *path_to_remove){
-    /* int ret; */
-    /* char full_path[MAX_LEN]; */
     int already_present_path;
     struct dentry *last_element;
     struct dentry *d_path_to_remove = get_dentry_from_path(path_to_remove);
 
+
+    // checking monitor state:
+    if (!(IS_REC_ON())){
+        printk("%s: cannot reconfigure monitor\n", MODNAME);
+        return -1;
+    }
 
     if (d_path_to_remove == NULL){
         printk("%s: error: retrieving dentry from %s\n",MODNAME, path_to_remove);
         return -1;
     }
 
-    /* checking if already present: */
+    // checking if already present:
     already_present_path = find_already_present_path(d_path_to_remove);
     if (already_present_path < 0){
         printk("%s: error: path not present\n",MODNAME);
@@ -480,6 +425,12 @@ static int read_pass_file(void){
 
 
 
+void set_state(unsigned char state){
+    // sanifying input: keep last 2 bits
+    state &= 0x3;
+    reference_monitor.state = state;
+}
+
 
 
 
@@ -503,10 +454,6 @@ static struct kprobe kp_mkdir = {
         .pre_handler = mkdir_wrapper,
 };
 
-/* static struct kprobe kp_tmp = { */
-/*         .symbol_name =  "vfs_mkdir", */
-/*         .pre_handler = tmp_wrapper, */
-/* }; */
 
 static int init_reference_monitor(void) {
 	int ret;
@@ -532,12 +479,6 @@ static int init_reference_monitor(void) {
         printk("%s: kprobe mkdir registering failed, returned %d\n",MODNAME,ret);
         return ret;
     }
-    /* ret = register_kprobe(&kp_tmp); */
-    /* if (ret < 0) { */
-    /*     printk("%s: kprobe tmp registering failed, returned %d\n",MODNAME,ret); */
-    /*     return ret; */
-    /* } */
-
 
     // init reference_monitor struct
     reference_monitor.state = ON;
@@ -557,6 +498,8 @@ static int init_reference_monitor(void) {
     reference_monitor.add_path = add_path;
     reference_monitor.rm_path = rm_path;
     reference_monitor.get_path = get_path;
+    /* reference_monitor.check_monitor_state = check_monitor_state; */
+    reference_monitor.set_state = set_state;
 
     // init the password:
     ret = read_pass_file();
@@ -577,7 +520,6 @@ static void exit_reference_monitor(void) {
     unregister_kprobe(&kp_mkdir);
     unregister_kprobe(&kp_rmdir);
     unregister_kprobe(&kp_unlink);
-    /* unregister_kprobe(&kp_tmp); */
     //Be carefull, this unregister assumes that none will need to run the hook function after this nodule
     //is unmounted
     printk("%s: hook module unloaded\n", MODNAME);

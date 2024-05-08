@@ -138,6 +138,7 @@ __SYSCALL_DEFINEx(2, _add_path, char* __user, monitor_pass, char* __user, new_pa
     }
     /* checking password: */
     ret = check_password(user_pass, len - 1);
+    kfree(user_pass);
     if (ret != 0){
         printk("%s: error: wrong monitor password in add_path.\n",MODNAME);
         return -1;
@@ -158,6 +159,7 @@ __SYSCALL_DEFINEx(2, _add_path, char* __user, monitor_pass, char* __user, new_pa
     }
 
     ret = reference_monitor.add_path(k_new_path);
+    kfree(k_new_path);
     if (ret < 0){
         printk("%s: error adding path\n",MODNAME);
         return -2;
@@ -210,7 +212,6 @@ __SYSCALL_DEFINEx(3, _get_paths, char* __user, monitor_pass, char** __user, buff
 
     for (i=0; i < min; i++){
         current_path = reference_monitor.get_path(i);
-        printk("DEBUG: %s\n", current_path);
         ret = copy_to_user(buffer[i], current_path, strlen(current_path));
         if (ret > 0){
             printk("%s: not fully deliver %s\n", MODNAME, current_path);
@@ -225,7 +226,7 @@ static unsigned long sys_get_paths = (unsigned long) __x64_sys_get_paths;
 
 /* ----------------------------------------------*/
 
-__SYSCALL_DEFINEx(2, _rm_path, char*, monitor_pass, char*, path_to_remove){
+__SYSCALL_DEFINEx(2, _rm_path, char* __user, monitor_pass, char* __user, path_to_remove){
 
     int ret;
     char *user_pass;
@@ -249,6 +250,7 @@ __SYSCALL_DEFINEx(2, _rm_path, char*, monitor_pass, char*, path_to_remove){
     }
 
     ret = copy_from_user(user_pass, monitor_pass, len);
+    kfree(user_pass);
 	if(ret != 0) {
         printk("%s: error: copy_from_user compare passwd\n",MODNAME);
         return -1;
@@ -306,6 +308,7 @@ __SYSCALL_DEFINEx(2, _change_monitor_password, char*, old_pass, char*, new_pass)
     }
     /* checking password: */
     ret = check_password(old_pass_k, len - 1);
+    kfree(old_pass_k);
     if (ret != 0){
         printk("%s: error: wrong monitor password in change_password\n",MODNAME);
         return -1;
@@ -327,6 +330,7 @@ __SYSCALL_DEFINEx(2, _change_monitor_password, char*, old_pass, char*, new_pass)
 
     /* updating password: */
     ret = compute_hash(new_pass_k, len - 1, reference_monitor.hashed_pass);
+    kfree(new_pass_k);
     printk("%s: password changed successfully\n", MODNAME);
 
     return 0;
@@ -335,6 +339,50 @@ __SYSCALL_DEFINEx(2, _change_monitor_password, char*, old_pass, char*, new_pass)
 static unsigned long sys_change_monitor_password = (unsigned long) __x64_sys_change_monitor_password;
 
 /* ----------------------------------------------*/
+
+__SYSCALL_DEFINEx(2, _change_monitor_state, char* __user, monitor_pass, unsigned char, new_state){
+    int ret;
+    char *user_pass;
+    ssize_t len;
+    int euid;
+
+    /* euid check: */
+    euid = current->cred->euid.val;
+    if (CHECK_EUID && euid != 0)
+    {
+        printk("%s: inappropriate effective euid: %d in get_paths\n", MODNAME, euid);
+        return -1;
+    }
+    // this counts the '\0'. It has to be excluded in password check
+    len = strnlen_user(monitor_pass, MAX_PASS_LEN);
+    user_pass = (char*) kmalloc(sizeof(char) * len, GFP_KERNEL);
+    if (user_pass == NULL){
+        printk("%s: error allocating buffer for pass digest\n", MODNAME);
+        return -1;
+    }
+
+    ret = copy_from_user(user_pass, monitor_pass, len);
+	if(ret != 0) {
+        printk("%s: error: copy_from_user compare passwd\n",MODNAME);
+        return -1;
+    }
+    /* checking password: */
+    ret = check_password(user_pass, len - 1);
+    kfree(user_pass);
+    if (ret != 0){
+        printk("%s: error: wrong monitor password in get_paths\n",MODNAME);
+        return -1;
+    }
+
+    reference_monitor.set_state(new_state);
+
+    return 0;
+
+}
+static unsigned long sys_change_monitor_state = (unsigned long) __x64_sys_change_monitor_state;
+
+/* ----------------------------------------------*/
+
 
 
 int init_module(void) {
@@ -349,6 +397,8 @@ int init_module(void) {
     printk("%s: installed sys_rm_path at %d\n",MODNAME, index);
     index = sys_call_helper.install_syscall((unsigned long *) sys_change_monitor_password);
     printk("%s: installed sys_change_monitor_password at %d\n",MODNAME, index);
+    index = sys_call_helper.install_syscall((unsigned long *) sys_change_monitor_state);
+    printk("%s: installed sys_change_monitor_state at %d\n",MODNAME, index);
 
     return 0;
 
