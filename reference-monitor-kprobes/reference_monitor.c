@@ -95,6 +95,25 @@ struct dentry *get_dentry_from_path(const char *path){
 
 
 
+void reduce_path(char *original_path, char *out_buffer){
+
+    char *curr;
+    char *reduced_path = kstrdup(original_path, GFP_KERNEL);
+    /* note: start from len - 2, because last char may be a '/', but it has be to excluded
+        /some/path/ ---> /some
+    */
+    for (curr = reduced_path + strlen(reduced_path) - 2; curr != reduced_path; curr--){
+        if (*curr == '/'){
+            // make substitution
+            *curr = '\0';
+            break;
+        }
+    }
+    memcpy(out_buffer, reduced_path, strlen(reduced_path) + 1);
+    kfree(reduced_path);
+
+}
+
 
 
 /*
@@ -166,18 +185,15 @@ char *full_path_from_dentry(struct dentry *dentry) {
 /**************************************************/
 int global_checker(struct dentry *d_path){
 
-    const char *path;
     struct dentry *parent;
     char *full_path;
-
-
 
     // scan all dparent tree:
     parent = d_path -> d_parent;
     while (d_path != parent) {
         if (find_already_present_path(d_path) >= 0 ){
             full_path = full_path_from_dentry(d_path);
-            printk("%s: found path %s in filtered list for path %s. Write operation will be rejected. This may cause a SEGFAULT\n",MODNAME, full_path, path);
+            printk("%s: found path %s in filtered list. Write operation will be rejected. This may cause a SEGFAULT\n",MODNAME, full_path);
             kfree(full_path);
             return 1;
         }
@@ -191,21 +207,21 @@ int global_checker(struct dentry *d_path){
 /**************************************************/
 
 
-
 int sys_open_wrapper(struct kprobe *ri, struct pt_regs *regs){
 
-    /* int dfd; */
+    int dfd;
     int flags;
     int write_mode = O_RDWR | O_WRONLY;
-    int creat_mode = O_CREAT | O_TMPFILE;
+    int creat_mode = O_CREAT | __O_TMPFILE;
     struct filename *file_name =(struct filename*) regs -> si;
     struct open_flags *op = (struct open_flags*) (regs -> dx);
     const char *path;
+    char reduced_path[MAX_LEN];
     struct dentry *d_path;
 
     flags = op -> open_flag;
-    /* umode_t mode = op -> mode; */
-    /* dfd = (int) regs -> di; */
+    umode_t mode = op -> mode;
+    dfd = (int) regs -> di;
 
     if (strstr(file_name -> name, dmesg_path) != NULL)
         return 0;
@@ -220,7 +236,13 @@ int sys_open_wrapper(struct kprobe *ri, struct pt_regs *regs){
     }
 
 
-    path = (const char*) file_name -> name;
+    if (flags & creat_mode){
+        reduce_path(file_name -> name, reduced_path);
+        path = reduced_path;
+    }
+    else
+        path = (const char*) file_name -> name;
+
     if (strstr(path, dmesg_path) != NULL)
         return 0;
 
@@ -231,7 +253,6 @@ int sys_open_wrapper(struct kprobe *ri, struct pt_regs *regs){
         return 0;
     }
 
-    /* printk("DEBUG: path in sys_wrapper: %s\n", file_name -> name); */
     if (global_checker(d_path)){
         op -> open_flag = O_RDONLY;
         /* printk("%s: write on path: %s has been rejected\n",MODNAME, path); */
@@ -318,6 +339,9 @@ int rmdir_wrapper(struct kprobe *ri, struct pt_regs *regs){
     return 0;
 }
 
+
+
+
 /*
     the correct inode and dentry don't exist yet. Then check the path without the last
     token: /a/seuqence/of/token.
@@ -326,7 +350,8 @@ int mkdir_wrapper(struct kprobe *ri, struct pt_regs *regs){
     struct filename *filename =(struct filename*) regs -> si;
 
     const char *path;
-    char *reduced_path;
+    /* char *reduced_path; */
+    char reduced_path[MAX_LEN];
     char *curr;
 
     struct dentry *d_path;
@@ -336,24 +361,31 @@ int mkdir_wrapper(struct kprobe *ri, struct pt_regs *regs){
     if (strstr(path, dmesg_path) != NULL)
         return 0;
 
-    reduced_path = kstrdup(path, GFP_KERNEL);
-    /* note: start from len - 2, because last char may be a '/', but it has be to excluded
-        /some/path/ ---> /some
-    */
-    for (curr = reduced_path + strlen(reduced_path) - 2; curr != reduced_path; curr--){
-        if (*curr == '/'){
-            // make substitution
-            *curr = '\0';
-            break;
-        }
-    }
+    /* reduced_path = kstrdup(path, GFP_KERNEL); */
+    /* /1* note: start from len - 2, because last char may be a '/', but it has be to excluded */
+    /*     /some/path/ ---> /some */
+    /* *1/ */
+    /* for (curr = reduced_path + strlen(reduced_path) - 2; curr != reduced_path; curr--){ */
+    /*     if (*curr == '/'){ */
+    /*         // make substitution */
+    /*         *curr = '\0'; */
+    /*         break; */
+    /*     } */
+    /* } */
+    /* reduced_path = kmalloc(sizeof(char) * MAX_LEN, GFP_KERNEL); */
+    /* if (reduced_path == NULL){ */
+    /*     printk("%s: error allocating buffer\n", MODNAME); */
+    /*     return 0; */
+    /* } */
+
+    reduce_path(path, reduced_path);
 
     d_path = get_dentry_from_path(reduced_path);
     if (d_path == NULL){
         /* printk("%s: failed getting dentry from path %s\n",MODNAME, path); */
         return 0;
     }
-    kfree(reduced_path);
+    /* kfree(reduced_path); */
 
     if (global_checker(d_path)){
         regs -> si = (long unsigned int) NULL;
