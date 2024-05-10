@@ -97,11 +97,6 @@ int check_password(char *pass_plaintext,ssize_t len){
     return strcmp(digest, reference_monitor.hashed_pass);
 }
 
-/*
-   @TODO: add checks on euid
-*/
-
-
 /* --------------------------------------------------------- */
 /* ----------SYSCALL DEFINITION -----------------*/
 __SYSCALL_DEFINEx(2, _add_path, char* __user, monitor_pass, char* __user, new_path){
@@ -110,17 +105,6 @@ __SYSCALL_DEFINEx(2, _add_path, char* __user, monitor_pass, char* __user, new_pa
     char *user_pass;
     char *k_new_path;
     ssize_t len;
-    int euid;
-
-    /* euid check: */
-    euid = current->cred->euid.val;
-
-
-    if (CHECK_EUID && euid != 0)
-    {
-        printk("%s: inappropriate effective euid: %d in add_path\n", MODNAME, euid);
-        return -1;
-    }
 
     // this counts the '\0'. It has to be excluded in password check
     len = strnlen_user(monitor_pass, MAX_PASS_LEN);
@@ -177,16 +161,8 @@ __SYSCALL_DEFINEx(3, _get_paths, char* __user, monitor_pass, char** __user, buff
     int i, min, ret;
     char *user_pass;
     ssize_t len;
-    int euid;
     char *current_path;
 
-    /* euid check: */
-    euid = current->cred->euid.val;
-    if (CHECK_EUID && euid != 0)
-    {
-        printk("%s: inappropriate effective euid: %d in get_paths\n", MODNAME, euid);
-        return -1;
-    }
     // this counts the '\0'. It has to be excluded in password check
     len = strnlen_user(monitor_pass, MAX_PASS_LEN);
     user_pass = (char*) kmalloc(sizeof(char) * len, GFP_KERNEL);
@@ -230,15 +206,6 @@ __SYSCALL_DEFINEx(2, _rm_path, char* __user, monitor_pass, char* __user, path_to
     int ret;
     char *user_pass;
     ssize_t len;
-    int euid;
-
-    /* euid check: */
-    euid = current->cred->euid.val;
-    if (CHECK_EUID && euid != 0)
-    {
-        printk("%s: inappropriate effective euid: %d in rm_path\n", MODNAME, euid);
-        return -1;
-    }
 
     // this counts the '\0'. It has to be excluded in password check
     len = strnlen_user(monitor_pass, MAX_PASS_LEN);
