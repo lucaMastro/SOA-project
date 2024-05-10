@@ -394,6 +394,31 @@ int mkdir_wrapper(struct kprobe *ri, struct pt_regs *regs){
     return 0;
 }
 
+
+int move_wrapper(struct kprobe *ri, struct pt_regs *regs){
+    /* int dfd = (int) regs -> di; */
+    // this is the struct filename of old position
+    struct filename *filename =(struct filename*) regs -> si;
+    const char *path;
+    struct dentry *d_path;
+
+    path = (const char*) filename -> name;
+    if (strstr(path, dmesg_path) != NULL)
+        return 0;
+
+    /* printk("DEBUG: path in global: %s\n", path); */
+    d_path = get_dentry_from_path(path);
+    if (d_path == NULL){
+        /* printk("%s: failed getting dentry from path %s\n",MODNAME, path); */
+        return 0;
+    }
+    if (global_checker(d_path)){
+        regs -> si = (long unsigned int) NULL;
+        /* printk("%s: write on path: %s has been rejected\n",MODNAME, path); */
+        return 0;
+    }
+    return 0;
+}
 /*************************************************************************************/
 
 
@@ -545,6 +570,11 @@ static struct kprobe kp_mkdir = {
         .pre_handler = mkdir_wrapper,
 };
 
+static struct kprobe kp_rename = {
+        .symbol_name =  "do_renameat2",
+        .pre_handler = move_wrapper,
+};
+
 
 static int init_reference_monitor(void) {
 	int ret;
@@ -568,6 +598,11 @@ static int init_reference_monitor(void) {
     ret = register_kprobe(&kp_mkdir);
     if (ret < 0) {
         printk("%s: kprobe mkdir registering failed, returned %d\n",MODNAME,ret);
+        return ret;
+    }
+    ret = register_kprobe(&kp_rename);
+    if (ret < 0) {
+        printk("%s: kprobe rename registering failed, returned %d\n",MODNAME,ret);
         return ret;
     }
 
@@ -611,6 +646,7 @@ static void exit_reference_monitor(void) {
     unregister_kprobe(&kp_mkdir);
     unregister_kprobe(&kp_rmdir);
     unregister_kprobe(&kp_unlink);
+    unregister_kprobe(&kp_rename);
     //Be carefull, this unregister assumes that none will need to run the hook function after this nodule
     //is unmounted
     printk("%s: hook module unloaded\n", MODNAME);
