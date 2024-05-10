@@ -47,6 +47,7 @@ extern sys_call_helper_t sys_call_helper;
 #define CHECK_EUID 0
 
 
+
 /* --------------------------------------------------------- */
 /* those functions works with kernel addresses only: */
 

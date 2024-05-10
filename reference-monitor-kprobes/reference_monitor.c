@@ -45,6 +45,8 @@ MODULE_DESCRIPTION("see the README file");
 #define PASS_FILE "/home/luca/Scrivania/shared/hash_sha256"
 
 
+static char *starting_pass = "";
+module_param(starting_pass, charp, S_IRUGO);
 
 
 
@@ -361,23 +363,6 @@ int mkdir_wrapper(struct kprobe *ri, struct pt_regs *regs){
     if (strstr(path, dmesg_path) != NULL)
         return 0;
 
-    /* reduced_path = kstrdup(path, GFP_KERNEL); */
-    /* /1* note: start from len - 2, because last char may be a '/', but it has be to excluded */
-    /*     /some/path/ ---> /some */
-    /* *1/ */
-    /* for (curr = reduced_path + strlen(reduced_path) - 2; curr != reduced_path; curr--){ */
-    /*     if (*curr == '/'){ */
-    /*         // make substitution */
-    /*         *curr = '\0'; */
-    /*         break; */
-    /*     } */
-    /* } */
-    /* reduced_path = kmalloc(sizeof(char) * MAX_LEN, GFP_KERNEL); */
-    /* if (reduced_path == NULL){ */
-    /*     printk("%s: error allocating buffer\n", MODNAME); */
-    /*     return 0; */
-    /* } */
-
     reduce_path(path, reduced_path);
 
     d_path = get_dentry_from_path(reduced_path);
@@ -442,7 +427,33 @@ int add_path(const char *new_path){
         return -1;
     }
 
-    // checking if already present:
+
+    /* if (reference_monitor.filtered_paths_len != 0){ */
+    /*     // checking if already present: */
+    /*     already_present_path = find_already_present_path(dentry); */
+    /*     if (already_present_path >= 0){ */
+    /*         printk("%s: error: path already present: %s\n",MODNAME, full_path_from_dentry(dentry)); */
+    /*         return -1; */
+    /*     } */
+    /*     reference_monitor.filtered_paths_len++; */
+    /*     reference_monitor.filtered_paths = krealloc(reference_monitor.filtered_paths, (reference_monitor.filtered_paths_len) * sizeof(struct dentry *), GFP_KERNEL); */
+    /*     if (reference_monitor.filtered_paths == NULL) */
+    /*     { */
+    /*         printk("%s: error allocating memory for paths.\n", MODNAME); */
+    /*         return -1; */
+    /*     } */
+    /* } */
+    /* else{ */
+    /*     // need to allocate pointer: */
+    /*     reference_monitor.filtered_paths = kmalloc( sizeof(struct dentry *), GFP_KERNEL); */
+    /*     if (reference_monitor.filtered_paths == NULL){ */
+    /*         printk("%s: error initializing paths.\n",MODNAME); */
+    /*         return -1; */
+    /*     } */
+    /*     reference_monitor.filtered_paths_len++; */
+    /* } */
+
+
     already_present_path = find_already_present_path(dentry);
     if (already_present_path >= 0){
         printk("%s: error: path already present: %s\n",MODNAME, full_path_from_dentry(dentry));
@@ -608,31 +619,35 @@ static int init_reference_monitor(void) {
 
     // init reference_monitor struct
     reference_monitor.state = RECON;
-    reference_monitor.filtered_paths_len = 1;
+    /* reference_monitor.filtered_paths_len = 1; */
+    reference_monitor.filtered_paths_len = 0;
     reference_monitor.filtered_paths = kmalloc( sizeof(struct dentry *), GFP_KERNEL);
     if (reference_monitor.filtered_paths == NULL){
         printk("%s: error initializing paths.\n",MODNAME);
         return -1;
     }
-    pass_file_dentry = get_dentry_from_path(PASS_FILE);
-    if (pass_file_dentry == NULL){
-        printk("%s: error retrieving dentry of pass_file\n", MODNAME);
-        return -1;
-    }
-    reference_monitor.filtered_paths[0] = pass_file_dentry;
+    /* pass_file_dentry = get_dentry_from_path(PASS_FILE); */
+    /* if (pass_file_dentry == NULL){ */
+    /*     printk("%s: error retrieving dentry of pass_file\n", MODNAME); */
+    /*     return -1; */
+    /* } */
+    /* reference_monitor.filtered_paths[0] = pass_file_dentry; */
 
     reference_monitor.add_path = add_path;
     reference_monitor.rm_path = rm_path;
     reference_monitor.get_path = get_path;
     /* reference_monitor.check_monitor_state = check_monitor_state; */
     reference_monitor.set_state = set_state;
+    /* starting_pass[64] = '\0'; */
+    printk("DEBUG: param: %s, %d\n", starting_pass, strlen(starting_pass));
 
     // init the password:
-    ret = read_pass_file();
-    if (ret < 0) {
-        printk("%s: error in reading pass file\n", MODNAME);
-        return ret;
-    }
+    /* ret = read_pass_file(); */
+    /* if (ret < 0) { */
+    /*     printk("%s: error in reading pass file\n", MODNAME); */
+    /*     return ret; */
+    /* } */
+    hex2bin(reference_monitor.hashed_pass, starting_pass, 32);
 
     printk("%s: done\n",MODNAME);
 
