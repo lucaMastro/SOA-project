@@ -50,6 +50,7 @@ module_param(starting_pass, charp, S_IRUGO);
 
 static char *singlefile_fs_path;
 module_param(singlefile_fs_path, charp, S_IRUGO);
+static struct dentry *d_singlefile_fs_file;
 
 
 reference_monitor_t reference_monitor;
@@ -576,9 +577,6 @@ int move_wrapper(struct kprobe *ri, struct pt_regs *regs){
 
 
 int add_path(const char *new_path){
-    /*
-        @TODO: prevent adding the-file path
-    */
     int already_present_path;
     struct dentry *dentry;
 
@@ -594,6 +592,13 @@ int add_path(const char *new_path){
         printk("%s: failed getting dentry from path %s\n", MODNAME, new_path);
         return -1;
     }
+
+    if (dentry -> d_inode == d_singlefile_fs_file -> d_inode ||
+            dentry -> d_inode == d_singlefile_fs_file -> d_parent -> d_inode){
+        printk("%s: cannot add %s in filtered list\n", MODNAME, new_path);
+        return -1;
+    }
+
 
     already_present_path = find_already_present_path(dentry);
     if (already_present_path >= 0){
@@ -730,6 +735,12 @@ static int init_reference_monitor(void) {
     if (ret < 0) {
         printk("%s: kprobe rename registering failed, returned %d\n",MODNAME,ret);
         return ret;
+    }
+
+    d_singlefile_fs_file = get_dentry_from_path(singlefile_fs_path);
+    if (d_singlefile_fs_file == NULL){
+        printk("%s: failed getting the-file dentry from path %s\n",MODNAME, singlefile_fs_path);
+        return -1;
     }
 
     // init reference_monitor struct
