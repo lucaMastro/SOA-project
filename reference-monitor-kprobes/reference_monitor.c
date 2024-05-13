@@ -275,7 +275,7 @@ void log_filtered_write(unsigned long input){
 
 
     // open the file for reading it
-    printk("DEBUG: command file: %s\n", data->command_path);
+    /* printk("DEBUG: command file: %s\n", data->command_path); */
     f = filp_open(data->command_path, O_RDONLY, 0);
     if (IS_ERR(f)) {
         printk("%s: error opening command file\n", MODNAME);
@@ -327,13 +327,13 @@ void log_filtered_write(unsigned long input){
     /* printk("DEBUG: ret %d\n", ret); */
 
     printk("%s: filtered write logged\n", MODNAME);
-    fput(f);
-    printk("DEBUG: f %px\n", f);
+    /* fput(f); */
+    /* printk("DEBUG: f %px\n", f); */
     ret = filp_close(f, NULL);
     kfree(data);
     vfree(huge_buffer);
     kfree(str);
-    printk("DEBUG: all freed\n");
+    /* printk("DEBUG: all freed\n"); */
     return;
 }
 

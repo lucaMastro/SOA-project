@@ -162,34 +162,36 @@ ssize_t onefilefs_write_iter(struct kiocb *iocb, struct iov_iter *from) {
     struct inode * the_inode = filp->f_inode;
     loff_t offset;
     int block_to_write; // index of the block to be written from device
+    ssize_t in_block_len;
 
-    // cycle parameters to manage multiple block writes
-    /* int i, num_iterations; */
+    while (len != 0){
+        //determine the block level offset for the operation
+        offset = file_size % DEFAULT_BLOCK_SIZE;
 
+        //compute the actual index of the the block to be written from device
+        block_to_write = file_size / DEFAULT_BLOCK_SIZE + 2; //the value 2 accounts for superblock and file-inode on device
 
-    //determine the block level offset for the operation
-    offset = file_size % DEFAULT_BLOCK_SIZE;
-    // @TODO: manage multiple block writing
-    /* if (offset + len > DEFAULT_BLOCK_SIZE) */
-    /*     len = DEFAULT_BLOCK_SIZE - offset; */
-
-    //compute the actual index of the the block to be written from device
-    block_to_write = file_size / DEFAULT_BLOCK_SIZE + 2; //the value 2 accounts for superblock and file-inode on device
+        // bytes to be written in the current block
+        in_block_len = offset + len > DEFAULT_BLOCK_SIZE ? DEFAULT_BLOCK_SIZE - offset : len;
 
 
-    bh = (struct buffer_head *)sb_bread(filp->f_path.dentry->d_inode->i_sb, block_to_write);
-    if(!bh)
-        return -EIO;
+        bh = (struct buffer_head *)sb_bread(filp->f_path.dentry->d_inode->i_sb, block_to_write);
+        if(!bh)
+            return -EIO;
 
-    memcpy(bh->b_data + offset, buf, len);
-    //write immediately on disk
-    sync_dirty_buffer(bh);
-    brelse(bh);
+        memcpy(bh->b_data + offset, buf, in_block_len);
+        //write immediately on disk
+        sync_dirty_buffer(bh);
+        brelse(bh);
 
-    // updating size:
-    file_size += len;
-    // also on the inode
-    i_size_write(the_inode, file_size);
+        // updating size:
+        file_size += in_block_len;
+        // also on the inode
+        i_size_write(the_inode, file_size);
+        // updating data if cross block write
+        buf += in_block_len;
+        len -= in_block_len;
+    }
     return len;
 }
 
@@ -209,5 +211,5 @@ const struct inode_operations onefilefs_inode_ops = {
 const struct file_operations onefilefs_file_operations = {
     .owner = THIS_MODULE,
     .read = onefilefs_read,
-    .write_iter = onefilefs_write_iter //please implement this function to complete the exercise
+    .write_iter = onefilefs_write_iter, //please implement this function to complete the exercise
 };
