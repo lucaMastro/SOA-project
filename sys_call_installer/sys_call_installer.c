@@ -120,10 +120,13 @@ __SYSCALL_DEFINEx(2, _add_path, char* __user, monitor_pass, char* __user, new_pa
         printk("%s: error: copy_from_user compare passwd\n",MODNAME);
         return -1;
     }
+
     /* checking password: */
+    spin_lock(&(reference_monitor.lock));
     ret = check_password(user_pass, len - 1);
     kfree(user_pass);
     if (ret != 0){
+	    spin_unlock(&(reference_monitor.lock));
         printk("%s: error: wrong monitor password in add_path.\n",MODNAME);
         return -1;
     }
@@ -132,12 +135,14 @@ __SYSCALL_DEFINEx(2, _add_path, char* __user, monitor_pass, char* __user, new_pa
     len = strnlen_user(new_path, MAX_PASS_LEN);
     k_new_path = (char*) kmalloc(sizeof(char) * len, GFP_KERNEL);
     if (k_new_path == NULL){
+	    spin_unlock(&(reference_monitor.lock));
         printk("%s: error allocating buffer for pass digest\n", MODNAME);
         return -1;
     }
 
     ret = copy_from_user(k_new_path, new_path, len);
 	if(ret != 0) {
+	    spin_unlock(&(reference_monitor.lock));
         printk("%s: error: copy_from_user k_new_path\n",MODNAME);
         return -1;
     }
@@ -145,10 +150,12 @@ __SYSCALL_DEFINEx(2, _add_path, char* __user, monitor_pass, char* __user, new_pa
     ret = reference_monitor.add_path(k_new_path);
     kfree(k_new_path);
     if (ret < 0){
+	    spin_unlock(&(reference_monitor.lock));
         printk("%s: error adding path\n",MODNAME);
         return -2;
     }
 
+    spin_unlock(&(reference_monitor.lock));
     printk("%s: path added successfully\n",MODNAME);
     return 0;
 
@@ -177,9 +184,12 @@ __SYSCALL_DEFINEx(3, _get_paths, char* __user, monitor_pass, char** __user, buff
         printk("%s: error: copy_from_user compare passwd\n",MODNAME);
         return -1;
     }
+
+    spin_lock(&(reference_monitor.lock));
     /* checking password: */
     ret = check_password(user_pass, len - 1);
     if (ret != 0){
+	    spin_unlock(&(reference_monitor.lock));
         printk("%s: error: wrong monitor password in get_paths\n",MODNAME);
         return -1;
     }
@@ -195,6 +205,7 @@ __SYSCALL_DEFINEx(3, _get_paths, char* __user, monitor_pass, char** __user, buff
         kfree(current_path);
     }
 
+    spin_unlock(&(reference_monitor.lock));
     return 0;
 
 }
@@ -221,20 +232,25 @@ __SYSCALL_DEFINEx(2, _rm_path, char* __user, monitor_pass, char* __user, path_to
         printk("%s: error: copy_from_user compare passwd\n",MODNAME);
         return -1;
     }
+
     /* checking password: */
+	spin_lock(&(reference_monitor.lock));
     ret = check_password(user_pass, len - 1);
     kfree(user_pass);
     if (ret != 0){
+	    spin_unlock(&(reference_monitor.lock));
         printk("%s: error: wrong monitor password in rm_paths\n",MODNAME);
         return -1;
     }
     /* removing path */
     ret = reference_monitor.rm_path(path_to_remove);
     if (ret < 0){
+	    spin_unlock(&(reference_monitor.lock));
         printk("%s: error removing path\n",MODNAME);
         return -2;
     }
 
+    spin_unlock(&(reference_monitor.lock));
     printk("%s: path removed successfully\n",MODNAME);
     return 0;
 
@@ -273,10 +289,13 @@ __SYSCALL_DEFINEx(2, _change_monitor_password, char*, old_pass, char*, new_pass)
         printk("%s: error: copy_from_user compare passwd\n",MODNAME);
         return -1;
     }
+
     /* checking password: */
+	spin_lock(&(reference_monitor.lock));
     ret = check_password(old_pass_k, len - 1);
     kfree(old_pass_k);
     if (ret != 0){
+	    spin_unlock(&(reference_monitor.lock));
         printk("%s: error: wrong monitor password in change_password\n",MODNAME);
         return -1;
     }
@@ -285,12 +304,14 @@ __SYSCALL_DEFINEx(2, _change_monitor_password, char*, old_pass, char*, new_pass)
     len = strnlen_user(new_pass, MAX_PASS_LEN);
     new_pass_k = (char*) kmalloc(sizeof(char) * len, GFP_KERNEL);
     if (new_pass_k == NULL){
+	    spin_unlock(&(reference_monitor.lock));
         printk("%s: error allocating buffer for pass digest\n", MODNAME);
         return -1;
     }
 
     ret = copy_from_user(new_pass_k, new_pass, len);
 	if(ret != 0) {
+	    spin_unlock(&(reference_monitor.lock));
         printk("%s: error: copy_from_user compare passwd\n",MODNAME);
         return -1;
     }
@@ -298,6 +319,7 @@ __SYSCALL_DEFINEx(2, _change_monitor_password, char*, old_pass, char*, new_pass)
     /* updating password: */
     ret = compute_hash(new_pass_k, len - 1, reference_monitor.hashed_pass);
     kfree(new_pass_k);
+	spin_unlock(&(reference_monitor.lock));
     printk("%s: password changed successfully\n", MODNAME);
 
     return 0;
@@ -333,16 +355,20 @@ __SYSCALL_DEFINEx(2, _change_monitor_state, char* __user, monitor_pass, unsigned
         printk("%s: error: copy_from_user compare passwd\n",MODNAME);
         return -1;
     }
+
     /* checking password: */
+    spin_lock(&(reference_monitor.lock));
     ret = check_password(user_pass, len - 1);
     kfree(user_pass);
     if (ret != 0){
+	    spin_unlock(&(reference_monitor.lock));
         printk("%s: error: wrong monitor password in get_paths\n",MODNAME);
         return -1;
     }
 
     reference_monitor.set_state(new_state);
 
+    spin_unlock(&(reference_monitor.lock));
     return 0;
 
 }

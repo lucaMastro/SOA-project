@@ -734,7 +734,7 @@ static int init_reference_monitor(void) {
 
     // init reference_monitor struct
     reference_monitor.state = RECON;
-    /* reference_monitor.filtered_paths_len = 1; */
+	spin_lock_init(&(reference_monitor.lock));
     reference_monitor.filtered_paths_len = 0;
     reference_monitor.filtered_paths = kmalloc( sizeof(struct dentry *), GFP_KERNEL);
     if (reference_monitor.filtered_paths == NULL){
@@ -745,7 +745,6 @@ static int init_reference_monitor(void) {
     reference_monitor.add_path = add_path;
     reference_monitor.rm_path = rm_path;
     reference_monitor.get_path = get_path;
-    /* reference_monitor.check_monitor_state = check_monitor_state; */
     reference_monitor.set_state = set_state;
     ret = hex2bin(reference_monitor.hashed_pass, starting_pass, 32);
     if (ret != 0){
