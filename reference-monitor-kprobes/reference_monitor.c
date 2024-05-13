@@ -28,6 +28,7 @@
 #include <linux/scatterlist.h>
 #include <linux/fs_struct.h>
 #include <linux/mm_types.h>
+#include <stddef.h>
 
 #include "lib/reference_monitor.h"
 #include "lib/deferred_work.h"
@@ -42,12 +43,13 @@ MODULE_AUTHOR("Francesco Quaglia <francesco.quaglia@uniroma2.it>");
 MODULE_DESCRIPTION("see the README file");
 
 #define MODNAME "Reference monitor"
-#define PASS_FILE "/home/luca/Scrivania/shared/hash_sha256"
 
 
-static char *starting_pass = "";
+static char *starting_pass = "688787d8ff144c502c7f5cffaafe2cc588d86079f9de88304c26b0cb99ce91c6";
 module_param(starting_pass, charp, S_IRUGO);
 
+static char *singlefile_fs_path;
+module_param(singlefile_fs_path, charp, S_IRUGO);
 
 
 reference_monitor_t reference_monitor;
@@ -55,6 +57,7 @@ reference_monitor_t reference_monitor;
 #define MAX_LEN 256
 #define IS_MON_ON() reference_monitor.state & 0x1
 #define IS_REC_ON() reference_monitor.state & 0x2
+
 
 const char *dmesg_path="/run/log/journal/";
 
@@ -66,19 +69,6 @@ struct open_flags {
 	int lookup_flags;
 };
 
-
-int isDir(const char *filename){
-    struct path path;
-    int error;
-    struct inode *inode;
-
-    error = kern_path(filename,LOOKUP_FOLLOW, &path);
-    if(error)
-        return -1;
-
-    inode = path.dentry -> d_inode;
-    return S_ISDIR(inode->i_mode);
-}
 
 
 
@@ -96,8 +86,50 @@ struct dentry *get_dentry_from_path(const char *path){
 }
 
 
+/*********************************************************************/
+/* THIS IS DUPLICATE: IT HAS TO BE MANAGED BY IMPORT BETWEEN sys_call_installer
+    AND this file:
+    @TODO: manage duplicate function
+*/
+int compute_hash(char *input_string, int input_size, char *output_buffer) {
+    struct crypto_shash *tfm;
+    struct shash_desc *desc;
+    int ret;
 
-void reduce_path(char *original_path, char *out_buffer){
+    tfm = crypto_alloc_shash("sha256", 0, 0);
+    if (IS_ERR(tfm)) {
+        printk("%s: error initializing transform\n", MODNAME);
+        return PTR_ERR(tfm);
+    }
+
+    desc = kmalloc(sizeof(struct shash_desc) + crypto_shash_descsize(tfm), GFP_KERNEL);
+    if (desc == NULL) {
+        printk("%s: error initializing hash description\n", MODNAME);
+        crypto_free_shash(tfm);
+        return -ENOMEM;
+    }
+
+    desc->tfm = tfm;
+
+    ret = crypto_shash_digest(desc, input_string, input_size, output_buffer);
+    if (ret < 0) {
+        printk("%s: error initializing hash computation\n", MODNAME);
+        kfree(desc);
+        crypto_free_shash(tfm);
+        return ret;
+    }
+
+    kfree(desc);
+    crypto_free_shash(tfm);
+
+    return 0;
+}
+/*********************************************************************/
+
+
+
+
+void reduce_path(const char *original_path, char *out_buffer){
 
     char *curr;
     char *reduced_path = kstrdup(original_path, GFP_KERNEL);
@@ -205,6 +237,137 @@ int global_checker(struct dentry *d_path){
 	return 0;
 }
 
+/*
+    keep in mind: free the deferred_work_t passed as parameter.
+*/
+void log_filtered_write(unsigned long input){
+
+    // this need to be freed
+	deferred_work_t *data = (deferred_work_t*) container_of((void*)input, deferred_work_t, the_work);
+    char *huge_buffer;
+    // line of the append-only file:
+	char *str;
+    // hex represantation of file content hash:
+    char file_content_hash[HASH_SIZE * 2 + 1];
+    // tmp buffer for hash bytes:
+    unsigned char tmp_hash[HASH_SIZE + 1];
+
+    ssize_t bytes_red;
+    struct file * f = NULL;
+    int ret;
+    size_t file_size;
+
+
+	if(data->command_path == NULL){
+        printk("%s: error command_path is null.\n", MODNAME);
+        kfree(data);
+        return;
+    }
+
+    // line of the append-only file:
+	str = kzalloc(1024, GFP_KERNEL);
+    if (str == NULL){
+        printk("%s: error allocating memory to read exe filtered (str).\n", MODNAME);
+        kfree(data);
+        return;
+    }
+
+
+    // open the file for reading it
+    printk("DEBUG: command file: %s\n", data->command_path);
+    f = filp_open(data->command_path, O_RDONLY, 0);
+    if (IS_ERR(f)) {
+        printk("%s: error opening command file\n", MODNAME);
+        kfree(data);
+        kfree(str);
+        return;
+    }
+
+    file_size = f->f_inode->i_size;
+    huge_buffer = vmalloc(file_size);
+    if (huge_buffer == NULL){
+        printk("%s: error allocating memory to read exe filtered (huge_buffer).\n", MODNAME);
+        kfree(data);
+        kfree(str);
+        return;
+    }
+
+
+    // last parameter is starting position:
+    bytes_red = kernel_read(f, huge_buffer, file_size, 0);
+    if (bytes_red < 0) {
+        printk("%s: error reading file %s\n", MODNAME, data->command_path);
+        filp_close(f, NULL);
+        kfree(data);
+        vfree(huge_buffer);
+        kfree(str);
+        return;
+    }
+    filp_close(f, NULL);
+
+
+    compute_hash(huge_buffer, bytes_red, tmp_hash);
+    bin2hex(file_content_hash, tmp_hash, HASH_SIZE);
+    file_content_hash[HASH_SIZE*2] = '\0';
+
+    sprintf(str, "TGID: %d PID: %d UID: %d EUID: %d program path: %s file content hash: %s\n", data->tgid, data->pid, data->uid, data->euid, data->command_path, file_content_hash);
+
+    f = filp_open(singlefile_fs_path, O_WRONLY , 0);
+    if (IS_ERR(f)) {
+        printk("%s: error opening the log file in deferred work\n", MODNAME);
+        kfree(data);
+        vfree(huge_buffer);
+        kfree(str);
+        return;
+    }
+
+
+    ret = kernel_write(f, str, strlen(str), 0);
+    /* printk("DEBUG: ret %d\n", ret); */
+
+    printk("%s: filtered write logged\n", MODNAME);
+    fput(f);
+    printk("DEBUG: f %px\n", f);
+    ret = filp_close(f, NULL);
+    kfree(data);
+    vfree(huge_buffer);
+    kfree(str);
+    printk("DEBUG: all freed\n");
+    return;
+}
+
+
+void task_function(void){
+    deferred_work_t *the_task;
+    char *program_path;
+    struct dentry *d_program_path;
+
+    the_task = kzalloc(sizeof(deferred_work_t),GFP_KERNEL);
+    if (the_task == NULL){
+        printk("%s: error allocating deferred_work structure\n", MODNAME);
+        return;
+    }
+
+    the_task->tgid = current->tgid;
+    the_task->pid = current->pid;
+    the_task->uid = current->cred->uid.val;
+    the_task->euid = current->cred->euid.val;
+    memset(the_task->command_path, 0, MAX_LEN);
+    d_program_path = current->mm->exe_file->f_path.dentry;
+    program_path = full_path_from_dentry(d_program_path);
+    if (program_path == NULL){
+        printk("%s: error finding program full path\n", MODNAME);
+        return;
+    }
+
+    strncpy(the_task->command_path, program_path, strlen(program_path));
+    kfree(program_path);
+
+    __INIT_WORK(&(the_task->the_work),(void*)log_filtered_write, (unsigned long)(&(the_task->the_work)));
+
+    schedule_work(&the_task->the_work);
+
+}
 
 /**************************************************/
 
@@ -222,7 +385,7 @@ int sys_open_wrapper(struct kprobe *ri, struct pt_regs *regs){
     struct dentry *d_path;
 
     flags = op -> open_flag;
-    umode_t mode = op -> mode;
+    /* umode_t mode = op -> mode; */
     dfd = (int) regs -> di;
 
     if (strstr(file_name -> name, dmesg_path) != NULL)
@@ -258,6 +421,7 @@ int sys_open_wrapper(struct kprobe *ri, struct pt_regs *regs){
     if (global_checker(d_path)){
         op -> open_flag = O_RDONLY;
         /* printk("%s: write on path: %s has been rejected\n",MODNAME, path); */
+        task_function();
         return 0;
     }
 
@@ -311,6 +475,7 @@ int unlink_wrapper(struct kprobe *ri, struct pt_regs *regs){
     }
     if (global_checker(d_path)){
         regs -> si = (long unsigned int) NULL;
+        task_function();
         /* printk("%s: write on path: %s has been rejected\n",MODNAME, path); */
         return 0;
     }
@@ -335,6 +500,7 @@ int rmdir_wrapper(struct kprobe *ri, struct pt_regs *regs){
     }
     if (global_checker(d_path)){
         regs -> si = (long unsigned int) NULL;
+        task_function();
         /* printk("%s: write on path: %s has been rejected\n",MODNAME, path); */
         return 0;
     }
@@ -354,7 +520,7 @@ int mkdir_wrapper(struct kprobe *ri, struct pt_regs *regs){
     const char *path;
     /* char *reduced_path; */
     char reduced_path[MAX_LEN];
-    char *curr;
+    /* char *curr; */
 
     struct dentry *d_path;
 
@@ -374,6 +540,7 @@ int mkdir_wrapper(struct kprobe *ri, struct pt_regs *regs){
 
     if (global_checker(d_path)){
         regs -> si = (long unsigned int) NULL;
+        task_function();
         return 0;
     }
     return 0;
@@ -399,6 +566,7 @@ int move_wrapper(struct kprobe *ri, struct pt_regs *regs){
     }
     if (global_checker(d_path)){
         regs -> si = (long unsigned int) NULL;
+        task_function();
         /* printk("%s: write on path: %s has been rejected\n",MODNAME, path); */
         return 0;
     }
@@ -426,33 +594,6 @@ int add_path(const char *new_path){
         printk("%s: failed getting dentry from path %s\n", MODNAME, new_path);
         return -1;
     }
-
-
-    /* if (reference_monitor.filtered_paths_len != 0){ */
-    /*     // checking if already present: */
-    /*     already_present_path = find_already_present_path(dentry); */
-    /*     if (already_present_path >= 0){ */
-    /*         printk("%s: error: path already present: %s\n",MODNAME, full_path_from_dentry(dentry)); */
-    /*         return -1; */
-    /*     } */
-    /*     reference_monitor.filtered_paths_len++; */
-    /*     reference_monitor.filtered_paths = krealloc(reference_monitor.filtered_paths, (reference_monitor.filtered_paths_len) * sizeof(struct dentry *), GFP_KERNEL); */
-    /*     if (reference_monitor.filtered_paths == NULL) */
-    /*     { */
-    /*         printk("%s: error allocating memory for paths.\n", MODNAME); */
-    /*         return -1; */
-    /*     } */
-    /* } */
-    /* else{ */
-    /*     // need to allocate pointer: */
-    /*     reference_monitor.filtered_paths = kmalloc( sizeof(struct dentry *), GFP_KERNEL); */
-    /*     if (reference_monitor.filtered_paths == NULL){ */
-    /*         printk("%s: error initializing paths.\n",MODNAME); */
-    /*         return -1; */
-    /*     } */
-    /*     reference_monitor.filtered_paths_len++; */
-    /* } */
-
 
     already_present_path = find_already_present_path(dentry);
     if (already_present_path >= 0){
@@ -526,32 +667,6 @@ char *get_path(int index){
 }
 
 
-static int read_pass_file(void){
-    ssize_t bytes_read;
-    struct file * f = NULL;
-    // starting position
-    loff_t pos = 0;
-
-    // open the file for reading it
-    f = filp_open(PASS_FILE, O_RDONLY, 0);
-    if (IS_ERR(f)) {
-        printk("%s: error opening password file\n", MODNAME);
-        return -1;
-    }
-
-    bytes_read = kernel_read(f, reference_monitor.hashed_pass, 32, &pos);
-    if (bytes_read < 0) {
-        printk("%s: error reading password file\n", MODNAME);
-        filp_close(f, NULL);
-        return -1;
-    }
-
-    filp_close(f, NULL);
-    return 0;
-}
-
-
-
 void set_state(unsigned char state){
     // sanifying input: keep last 2 bits
     state &= 0x3;
@@ -589,7 +704,7 @@ static struct kprobe kp_rename = {
 
 static int init_reference_monitor(void) {
 	int ret;
-    struct dentry *pass_file_dentry;
+    /* struct dentry *pass_file_dentry; */
 	printk("%s: initializing\n",MODNAME);
 	ret = register_kprobe(&kp);
     if (ret < 0) {
@@ -626,28 +741,17 @@ static int init_reference_monitor(void) {
         printk("%s: error initializing paths.\n",MODNAME);
         return -1;
     }
-    /* pass_file_dentry = get_dentry_from_path(PASS_FILE); */
-    /* if (pass_file_dentry == NULL){ */
-    /*     printk("%s: error retrieving dentry of pass_file\n", MODNAME); */
-    /*     return -1; */
-    /* } */
-    /* reference_monitor.filtered_paths[0] = pass_file_dentry; */
 
     reference_monitor.add_path = add_path;
     reference_monitor.rm_path = rm_path;
     reference_monitor.get_path = get_path;
     /* reference_monitor.check_monitor_state = check_monitor_state; */
     reference_monitor.set_state = set_state;
-    /* starting_pass[64] = '\0'; */
-    printk("DEBUG: param: %s, %d\n", starting_pass, strlen(starting_pass));
-
-    // init the password:
-    /* ret = read_pass_file(); */
-    /* if (ret < 0) { */
-    /*     printk("%s: error in reading pass file\n", MODNAME); */
-    /*     return ret; */
-    /* } */
-    hex2bin(reference_monitor.hashed_pass, starting_pass, 32);
+    ret = hex2bin(reference_monitor.hashed_pass, starting_pass, 32);
+    if (ret != 0){
+        printk("%s: error converting password param to u8\n", MODNAME);
+        return 0;
+    }
 
     printk("%s: done\n",MODNAME);
 

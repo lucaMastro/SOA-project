@@ -7,7 +7,10 @@
 #include <linux/types.h>
 #include <linux/slab.h>
 #include <linux/string.h>
+#include <linux/uio.h>
 #include "singlefilefs.h"
+
+
 
 // global variable needed because the size is resetted every time. This will trace size.
 uint64_t file_size = 0;
@@ -148,14 +151,63 @@ ssize_t onefilefs_write(struct file * filp, const char __user * buf, size_t len,
 
 
 
+ssize_t onefilefs_write_iter(struct kiocb *iocb, struct iov_iter *from) {
+    /* since write is only append mode, off parameter useless. */
+
+    struct file *filp = iocb->ki_filp;
+    char *buf= from->kvec->iov_base;
+    size_t len = from->kvec->iov_len;
+
+    struct buffer_head *bh = NULL;
+    struct inode * the_inode = filp->f_inode;
+    loff_t offset;
+    int block_to_write; // index of the block to be written from device
+
+    // cycle parameters to manage multiple block writes
+    /* int i, num_iterations; */
+
+
+    //determine the block level offset for the operation
+    offset = file_size % DEFAULT_BLOCK_SIZE;
+    // @TODO: manage multiple block writing
+    /* if (offset + len > DEFAULT_BLOCK_SIZE) */
+    /*     len = DEFAULT_BLOCK_SIZE - offset; */
+
+    //compute the actual index of the the block to be written from device
+    block_to_write = file_size / DEFAULT_BLOCK_SIZE + 2; //the value 2 accounts for superblock and file-inode on device
+
+
+    bh = (struct buffer_head *)sb_bread(filp->f_path.dentry->d_inode->i_sb, block_to_write);
+    if(!bh)
+        return -EIO;
+
+    memcpy(bh->b_data + offset, buf, len);
+    //write immediately on disk
+    sync_dirty_buffer(bh);
+    brelse(bh);
+
+    // updating size:
+    file_size += len;
+    // also on the inode
+    i_size_write(the_inode, file_size);
+    return len;
+}
 
 //look up goes in the inode operations
 const struct inode_operations onefilefs_inode_ops = {
     .lookup = onefilefs_lookup,
 };
 
+
+/*
+    Since file has to be written by kernel, file_operations has to define the .write_iter function
+    instead of the .write one as said here:
+    https://stackoverflow.com/questions/71013101/kernel-space-write-a-file
+    according to documentaiton, the signature for this function is:
+    ssize_t (*write_iter) (struct kiocb *, struct iov_iter *);
+*/
 const struct file_operations onefilefs_file_operations = {
     .owner = THIS_MODULE,
     .read = onefilefs_read,
-    .write = onefilefs_write //please implement this function to complete the exercise
+    .write_iter = onefilefs_write_iter //please implement this function to complete the exercise
 };

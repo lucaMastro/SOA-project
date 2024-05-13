@@ -17,6 +17,8 @@ cd $ROOT/reference-monitor-kprobes
 sudo rmmod reference_monitor
 make clean
 
+cd $ROOT/singlefile-FS
+./umount.sh
 
 set +x
 

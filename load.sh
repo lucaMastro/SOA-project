@@ -9,9 +9,12 @@ password=`echo "asd" | tr -d "\n" | sha256sum | cut -d' ' -f1 | tr -d "\n"`
 set -ex
 
 sudo dmesg -C
+cd $ROOT/singlefile-FS
+./mount.sh
+
 cd $ROOT/reference-monitor-kprobes
 make all
-sudo insmod reference_monitor.ko starting_pass=$password
+sudo insmod reference_monitor.ko starting_pass=$password singlefile_fs_path=$ROOT/singlefile-FS/mount/the-file
 
 cd $ROOT/Linux-sys_call_table-discoverer
 make all
