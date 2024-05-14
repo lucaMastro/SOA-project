@@ -83,6 +83,7 @@ struct dentry *get_dentry_from_path(const char *path){
         return NULL;
     }
 
+    mntput(file_path.mnt);
     return file_path.dentry;
 }
 
@@ -596,8 +597,10 @@ int add_path(const char *new_path){
     if (dentry -> d_inode == d_singlefile_fs_file -> d_inode ||
             dentry -> d_inode == d_singlefile_fs_file -> d_parent -> d_inode){
         printk("%s: cannot add %s in filtered list\n", MODNAME, new_path);
+        dput(d_singlefile_fs_file -> d_parent);
         return -1;
     }
+    dput(d_singlefile_fs_file -> d_parent);
 
 
     already_present_path = find_already_present_path(dentry);
@@ -771,14 +774,24 @@ static int init_reference_monitor(void) {
 
 
 static void exit_reference_monitor(void) {
+    int i, count;
     unregister_kprobe(&kp);
     unregister_kprobe(&kp_mkdir);
     unregister_kprobe(&kp_rmdir);
     unregister_kprobe(&kp_unlink);
     unregister_kprobe(&kp_rename);
+    // release the append only file dentry:
+    /* count = d_singlefile_fs_file -> d_lockref.count; */
+    /* printk("DEBUG: d_name : %s\n", d_singlefile_fs_file -> d_name.name); */
+    /* printk("DEBUG: dentry : %px, %d, %d\n", d_singlefile_fs_file, count, d_singlefile_fs_file -> d_lockref.count); */
+    dput(d_singlefile_fs_file);
+    /* printk("DEBUG: dentry : %px, %d, %d\n", d_singlefile_fs_file, count, d_singlefile_fs_file -> d_lockref.count); */
+    /* printk("DEBUG: d_name : %s\n", d_singlefile_fs_file -> d_name.name); */
     //Be carefull, this unregister assumes that none will need to run the hook function after this nodule
     //is unmounted
     printk("%s: hook module unloaded\n", MODNAME);
+    // release dentries:
+    /* for */
     kfree(reference_monitor.filtered_paths);
 }
 module_init(init_reference_monitor);
