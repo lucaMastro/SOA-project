@@ -694,6 +694,7 @@ void set_state(unsigned char state){
     // sanifying input: keep last 2 bits
     state &= 0x3;
     reference_monitor.state = state;
+    printk("%s: reference is now in the state: %d\n", MODNAME, state);
 }
 
 

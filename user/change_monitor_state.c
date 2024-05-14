@@ -39,7 +39,7 @@ int main(int argc, char** argv){
     setegid(0);
     char *plain_text = "asd";
 
-    new_state = 3;
+    new_state = 2;
 
     change_monitor_state(plain_text, new_state);
 

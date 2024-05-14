@@ -14,7 +14,7 @@
 
 // global variable needed because the size is resetted every time. This will trace size.
 static uint64_t file_size = 0;
-static DEFINE_SPINLOCK(write_lock);
+static DEFINE_MUTEX(write_lock);
 
 ssize_t onefilefs_read(struct file * filp, char __user * buf, size_t len, loff_t * off) {
 
@@ -31,7 +31,6 @@ ssize_t onefilefs_read(struct file * filp, char __user * buf, size_t len, loff_t
     //this operation is not synchronized
     //*off can be changed concurrently
     //add synchronization if you need it for any reason
-    spin_lock(&write_lock);
 
     //check that *off is within boundaries
     if (*off >= file_size)
@@ -57,8 +56,6 @@ ssize_t onefilefs_read(struct file * filp, char __user * buf, size_t len, loff_t
     ret = copy_to_user(buf,bh->b_data + offset, len);
     *off += (len - ret);
     brelse(bh);
-
-    spin_unlock(&write_lock);
 
     return len - ret;
 
@@ -168,6 +165,8 @@ ssize_t onefilefs_write_iter(struct kiocb *iocb, struct iov_iter *from) {
     int block_to_write; // index of the block to be written from device
     ssize_t in_block_len;
 
+
+    mutex_lock(&write_lock);
     while (len != 0){
         //determine the block level offset for the operation
         offset = file_size % DEFAULT_BLOCK_SIZE;
@@ -196,6 +195,7 @@ ssize_t onefilefs_write_iter(struct kiocb *iocb, struct iov_iter *from) {
         buf += in_block_len;
         len -= in_block_len;
     }
+    mutex_unlock(&write_lock);
     return len;
 }
 
