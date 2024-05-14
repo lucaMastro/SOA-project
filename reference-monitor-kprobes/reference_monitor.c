@@ -390,8 +390,8 @@ int sys_open_wrapper(struct kprobe *ri, struct pt_regs *regs){
     /* umode_t mode = op -> mode; */
     dfd = (int) regs -> di;
 
-    if (strstr(file_name -> name, dmesg_path) != NULL)
-        return 0;
+    /* if (strstr(file_name -> name, dmesg_path) != NULL) */
+    /*     return 0; */
 
     // if not write mode or state is *off, just return
     if (
@@ -465,6 +465,10 @@ int unlink_wrapper(struct kprobe *ri, struct pt_regs *regs){
     const char *path;
     struct dentry *d_path;
 
+    if (! (IS_MON_ON())){
+        return 0;
+    }
+
     path = (const char*) filename -> name;
     if (strstr(path, dmesg_path) != NULL)
         return 0;
@@ -490,6 +494,9 @@ int rmdir_wrapper(struct kprobe *ri, struct pt_regs *regs){
     const char *path;
     struct dentry *d_path;
 
+    if (! (IS_MON_ON())){
+        return 0;
+    }
     path = (const char*) filename -> name;
     if (strstr(path, dmesg_path) != NULL)
         return 0;
@@ -526,6 +533,10 @@ int mkdir_wrapper(struct kprobe *ri, struct pt_regs *regs){
 
     struct dentry *d_path;
 
+    if (! (IS_MON_ON())){
+        return 0;
+    }
+
     /* printk("DEBUG: mkdir con path: %s\n", filename -> name); */
     path = (const char*) filename -> name;
     if (strstr(path, dmesg_path) != NULL)
@@ -555,6 +566,10 @@ int move_wrapper(struct kprobe *ri, struct pt_regs *regs){
     struct filename *filename =(struct filename*) regs -> si;
     const char *path;
     struct dentry *d_path;
+
+    if (! (IS_MON_ON())){
+        return 0;
+    }
 
     path = (const char*) filename -> name;
     if (strstr(path, dmesg_path) != NULL)
@@ -774,25 +789,22 @@ static int init_reference_monitor(void) {
 
 
 static void exit_reference_monitor(void) {
-    int i, count;
+    int i;
     unregister_kprobe(&kp);
     unregister_kprobe(&kp_mkdir);
     unregister_kprobe(&kp_rmdir);
     unregister_kprobe(&kp_unlink);
     unregister_kprobe(&kp_rename);
     // release the append only file dentry:
-    /* count = d_singlefile_fs_file -> d_lockref.count; */
-    /* printk("DEBUG: d_name : %s\n", d_singlefile_fs_file -> d_name.name); */
-    /* printk("DEBUG: dentry : %px, %d, %d\n", d_singlefile_fs_file, count, d_singlefile_fs_file -> d_lockref.count); */
     dput(d_singlefile_fs_file);
-    /* printk("DEBUG: dentry : %px, %d, %d\n", d_singlefile_fs_file, count, d_singlefile_fs_file -> d_lockref.count); */
-    /* printk("DEBUG: d_name : %s\n", d_singlefile_fs_file -> d_name.name); */
-    //Be carefull, this unregister assumes that none will need to run the hook function after this nodule
-    //is unmounted
-    printk("%s: hook module unloaded\n", MODNAME);
-    // release dentries:
-    /* for */
+
+    // release all filtered dentries:
+    for (i = 0; i < reference_monitor.filtered_paths_len; i++){
+        dput(reference_monitor.filtered_paths[i]);
+    }
+    // free the kmemory:
     kfree(reference_monitor.filtered_paths);
+    printk("%s: hook module unloaded\n", MODNAME);
 }
 module_init(init_reference_monitor);
 module_exit(exit_reference_monitor);

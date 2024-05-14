@@ -13,7 +13,8 @@
 
 
 // global variable needed because the size is resetted every time. This will trace size.
-uint64_t file_size = 0;
+static uint64_t file_size = 0;
+static DEFINE_SPINLOCK(write_lock);
 
 ssize_t onefilefs_read(struct file * filp, char __user * buf, size_t len, loff_t * off) {
 
@@ -30,6 +31,7 @@ ssize_t onefilefs_read(struct file * filp, char __user * buf, size_t len, loff_t
     //this operation is not synchronized
     //*off can be changed concurrently
     //add synchronization if you need it for any reason
+    spin_lock(&write_lock);
 
     //check that *off is within boundaries
     if (*off >= file_size)
@@ -55,6 +57,8 @@ ssize_t onefilefs_read(struct file * filp, char __user * buf, size_t len, loff_t
     ret = copy_to_user(buf,bh->b_data + offset, len);
     *off += (len - ret);
     brelse(bh);
+
+    spin_unlock(&write_lock);
 
     return len - ret;
 

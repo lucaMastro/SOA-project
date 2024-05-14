@@ -8,7 +8,8 @@ trovarsi in uno dei seguenti quattro stati:
 
 - OFF: significa che le sue operazioni sono attualmente disabilitate;
 - ON: significa che le sue operazioni sono attualmente abilitate;
-- REC-ON/REC-OFF: significa che può essere attualmente riconfigurato (sia in modalità ON che OFF).
+- REC-ON/REC-OFF: significa che può essere attualmente riconfigurato (sia in
+  modalità ON che OFF).
 
 La configurazione del monitor di riferimento si basa su un insieme di percorsi
 del file system. Ogni percorso corrisponde a un file/directory che al momento
@@ -56,3 +57,24 @@ anche se conteneva effettivamente dati. Ho quindi aggiunto una variabile globale
 che si aggiorna dopo ogni scrittura coi dati scritti: in questo modo, la
 `file_size` corrisponde anche all'offset in cui scrivere i nuovi dati.
 
+Nel file di log, ho trovato questa situazione:
+
+```
+TGID: 1786 PID: 1786 UID: 1000 EUID: 1000 prograTGID: 1786 PID: 1786 UID: 1000 EUID: 1000 program path: /usr/bin/zsh file content hash: 4ff9dbd18f4cad5234614cdf6a2b59e0a9a6326b09b8e86f40e1a55b5476d11d
+m path: /usr/bin/zsh file content hash: 4ff9dbd18f4cad5234614cdf6a2b59e0a9a6326b09b8e86f40e1a55b5476d11d
+```
+
+Il risultato è stato riscontrato con le seguenti istruzioni dalla root del
+progetto:
+
+```bash
+$ user/add_path ../dir_prova
+adding path: ../dir_prova
+path added successfully
+$ for ((i=0;i<100;i++)); do
+echo "asd" > ../dir_prova/asd.txt
+done
+```
+
+la scrittura sul file di log potrebbe dover essere sincronizzata. È successo
+però una sola volta e non riesco a riprodurlo.
