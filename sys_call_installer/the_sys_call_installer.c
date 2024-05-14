@@ -31,60 +31,19 @@
 
 #include "../Linux-sys_call_table-discoverer/lib/syscall_helper.h"
 #include "../reference-monitor-kprobes/lib/reference_monitor.h"
+#include "../lib/module_lad.h"
 
-MODULE_LICENSE("GPL");
-MODULE_AUTHOR("Luca Mastrobattista");
-MODULE_DESCRIPTION("see the README file");
 
 extern reference_monitor_t reference_monitor;
 extern sys_call_helper_t sys_call_helper;
 
 #define MODNAME "Sys_call installer"
 
-#define HASH_FUNC "sha256"
-#define HASH_SIZE 32
-#define MAX_PASS_LEN 256
 #define CHECK_EUID 0
 
 
-
 /* --------------------------------------------------------- */
-/* those functions works with kernel addresses only: */
-
-int compute_hash(char *input_string, int input_size, char *output_buffer) {
-    struct crypto_shash *tfm;
-    struct shash_desc *desc;
-    int ret;
-
-    tfm = crypto_alloc_shash(HASH_FUNC, 0, 0);
-    if (IS_ERR(tfm)) {
-        printk("%s: error initializing transform\n", MODNAME);
-        return PTR_ERR(tfm);
-    }
-
-    desc = kmalloc(sizeof(struct shash_desc) + crypto_shash_descsize(tfm), GFP_KERNEL);
-    if (desc == NULL) {
-        printk("%s: error initializing hash description\n", MODNAME);
-        crypto_free_shash(tfm);
-        return -ENOMEM;
-    }
-
-    desc->tfm = tfm;
-
-    ret = crypto_shash_digest(desc, input_string, input_size, output_buffer);
-    if (ret < 0) {
-        printk("%s: error initializing hash computation\n", MODNAME);
-        kfree(desc);
-        crypto_free_shash(tfm);
-        return ret;
-    }
-
-    kfree(desc);
-    crypto_free_shash(tfm);
-
-    return 0;
-}
-
+/* this function works with kernel addresses only: */
 
 int check_password(char *pass_plaintext,ssize_t len){
     char digest[HASH_SIZE + 1];
@@ -132,7 +91,7 @@ __SYSCALL_DEFINEx(2, _add_path, char* __user, monitor_pass, char* __user, new_pa
     }
 
     /* adding path */
-    len = strnlen_user(new_path, MAX_PASS_LEN);
+    len = strnlen_user(new_path, MAX_PATH_LEN);
     k_new_path = (char*) kmalloc(sizeof(char) * len, GFP_KERNEL);
     if (k_new_path == NULL){
 	    spin_unlock(&(reference_monitor.lock));
@@ -217,6 +176,7 @@ __SYSCALL_DEFINEx(2, _rm_path, char* __user, monitor_pass, char* __user, path_to
 
     int ret;
     char *user_pass;
+    char *k_path_to_remove;
     ssize_t len;
 
     // this counts the '\0'. It has to be excluded in password check
@@ -243,7 +203,23 @@ __SYSCALL_DEFINEx(2, _rm_path, char* __user, monitor_pass, char* __user, path_to
         return -1;
     }
     /* removing path */
-    ret = reference_monitor.rm_path(path_to_remove);
+    len = strnlen_user(path_to_remove, MAX_PATH_LEN);
+    k_path_to_remove = (char*) kmalloc(sizeof(char) * len, GFP_KERNEL);
+    if (k_path_to_remove == NULL){
+	    spin_unlock(&(reference_monitor.lock));
+        printk("%s: error allocating buffer for path to remove\n", MODNAME);
+        return -1;
+    }
+
+    ret = copy_from_user(k_path_to_remove, path_to_remove, len);
+	if(ret != 0) {
+	    spin_unlock(&(reference_monitor.lock));
+        printk("%s: error: copy_from_user k_path_to_remove\n",MODNAME);
+        return -1;
+    }
+
+    ret = reference_monitor.rm_path(k_path_to_remove);
+    kfree(k_path_to_remove);
     if (ret < 0){
 	    spin_unlock(&(reference_monitor.lock));
         printk("%s: error removing path\n",MODNAME);

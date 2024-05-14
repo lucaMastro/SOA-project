@@ -78,3 +78,10 @@ done
 
 la scrittura sul file di log potrebbe dover essere sincronizzata. È successo
 però una sola volta e non riesco a riprodurlo.
+
+# Imports
+
+Nella cartella `$ROOT/lib` sono presenti gli header files che sono condivisi tra
+più moduli e/o lo spazio utente. In `$MODULE_ROOT/lib`, invece, ci sono gli
+header files che sono relativi al singolo modulo; stesso discorso vale per
+`$ROOT/user/lib`.

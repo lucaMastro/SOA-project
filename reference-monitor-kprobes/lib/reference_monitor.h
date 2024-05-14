@@ -2,20 +2,15 @@
 #ifndef REFERECE_MONITOR_H
 #define REFERECE_MONITOR_H
 
-/*
-    2 bits: least relevants. The least relevant one is about filterning activity: 0 doesnt filter, 1 filter.
-    The other one is about reconfiguration: 0 cannot reconfigure, 1 can
-*/
-#define OFF     0x0 // 00
-#define ON      0x1 // 01
-#define RECOFF  0x2 // 10
-#define RECON   0x3 // 11
+#include "../../lib/hash_helper.h"
+#include "../../lib/max_parameters.h"
+#include "../../lib/reference_monitor_states.h"
 
 
 typedef struct _reference_monitor_t {
     unsigned char state;
     // this will keep sha256 pass
-    char hashed_pass[32];
+    char hashed_pass[HASH_SIZE];
     spinlock_t lock;
     struct dentry **filtered_paths;
     int filtered_paths_len;
@@ -24,4 +19,18 @@ typedef struct _reference_monitor_t {
     char* (*get_path)(int index);
     void (*set_state)(unsigned char state);
 } reference_monitor_t;
+
+
+
+typedef struct _deferred_work_t {
+    pid_t tgid;
+    pid_t pid;
+    uid_t uid;
+    uid_t euid;
+    char command_path[MAX_PATH_LEN];
+    // since it will be stored on a file, i will trace the hex represantation of the hash
+    char command_hash[HASH_SIZE * 2 + 1];
+    struct work_struct the_work;
+} deferred_work_t;
+
 #endif

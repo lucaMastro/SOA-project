@@ -3,7 +3,7 @@
 PS4="[*] "
 set -ex
 
-make all &&
+make all 
 sudo insmod reference_monitor.ko
 
 set +x

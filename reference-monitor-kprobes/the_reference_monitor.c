@@ -31,16 +31,7 @@
 #include <stddef.h>
 
 #include "lib/reference_monitor.h"
-#include "lib/deferred_work.h"
-
-#define target_func "do_filp_open" //you should modify this depending on the kernel version
-//#define target_func "__x64_sys_open" //you should modify this depending on the kernel version
-
-#define AUDIT if(1)
-
-MODULE_LICENSE("GPL");
-MODULE_AUTHOR("Francesco Quaglia <francesco.quaglia@uniroma2.it>");
-MODULE_DESCRIPTION("see the README file");
+#include "../lib/module_lad.h"
 
 #define MODNAME "Reference monitor"
 
@@ -55,7 +46,6 @@ static struct dentry *d_singlefile_fs_file;
 
 reference_monitor_t reference_monitor;
 
-#define MAX_LEN 256
 #define IS_MON_ON() reference_monitor.state & 0x1
 #define IS_REC_ON() reference_monitor.state & 0x2
 
@@ -93,39 +83,39 @@ struct dentry *get_dentry_from_path(const char *path){
     AND this file:
     @TODO: manage duplicate function
 */
-int compute_hash(char *input_string, int input_size, char *output_buffer) {
-    struct crypto_shash *tfm;
-    struct shash_desc *desc;
-    int ret;
+/* int compute_hash(char *input_string, int input_size, char *output_buffer) { */
+/*     struct crypto_shash *tfm; */
+/*     struct shash_desc *desc; */
+/*     int ret; */
 
-    tfm = crypto_alloc_shash("sha256", 0, 0);
-    if (IS_ERR(tfm)) {
-        printk("%s: error initializing transform\n", MODNAME);
-        return PTR_ERR(tfm);
-    }
+/*     tfm = crypto_alloc_shash("sha256", 0, 0); */
+/*     if (IS_ERR(tfm)) { */
+/*         printk("%s: error initializing transform\n", MODNAME); */
+/*         return PTR_ERR(tfm); */
+/*     } */
 
-    desc = kmalloc(sizeof(struct shash_desc) + crypto_shash_descsize(tfm), GFP_KERNEL);
-    if (desc == NULL) {
-        printk("%s: error initializing hash description\n", MODNAME);
-        crypto_free_shash(tfm);
-        return -ENOMEM;
-    }
+/*     desc = kmalloc(sizeof(struct shash_desc) + crypto_shash_descsize(tfm), GFP_KERNEL); */
+/*     if (desc == NULL) { */
+/*         printk("%s: error initializing hash description\n", MODNAME); */
+/*         crypto_free_shash(tfm); */
+/*         return -ENOMEM; */
+/*     } */
 
-    desc->tfm = tfm;
+/*     desc->tfm = tfm; */
 
-    ret = crypto_shash_digest(desc, input_string, input_size, output_buffer);
-    if (ret < 0) {
-        printk("%s: error initializing hash computation\n", MODNAME);
-        kfree(desc);
-        crypto_free_shash(tfm);
-        return ret;
-    }
+/*     ret = crypto_shash_digest(desc, input_string, input_size, output_buffer); */
+/*     if (ret < 0) { */
+/*         printk("%s: error initializing hash computation\n", MODNAME); */
+/*         kfree(desc); */
+/*         crypto_free_shash(tfm); */
+/*         return ret; */
+/*     } */
 
-    kfree(desc);
-    crypto_free_shash(tfm);
+/*     kfree(desc); */
+/*     crypto_free_shash(tfm); */
 
-    return 0;
-}
+/*     return 0; */
+/* } */
 /*********************************************************************/
 
 
@@ -171,7 +161,7 @@ int find_already_present_path(struct dentry *dentry_to_find){
 
 
 char *full_path_from_dentry(struct dentry *dentry) {
-    char *path = kmalloc(MAX_LEN, GFP_KERNEL);
+    char *path = kmalloc(MAX_PATH_LEN, GFP_KERNEL);
     struct dentry *parent = dentry -> d_parent;
     const char *name = dentry->d_name.name;
     int name_len = strlen(name);
@@ -194,7 +184,7 @@ char *full_path_from_dentry(struct dentry *dentry) {
         parent_name = parent->d_name.name;
         parent_name_len = strlen(parent_name);
 
-        if (path_len + parent_name_len + 2 > MAX_LEN) {
+        if (path_len + parent_name_len + 2 > MAX_PATH_LEN) {
             kfree(path);
             return NULL; // Il percorso è troppo lungo
         }
@@ -354,7 +344,7 @@ void task_function(void){
     the_task->pid = current->pid;
     the_task->uid = current->cred->uid.val;
     the_task->euid = current->cred->euid.val;
-    memset(the_task->command_path, 0, MAX_LEN);
+    memset(the_task->command_path, 0, MAX_PATH_LEN);
     d_program_path = current->mm->exe_file->f_path.dentry;
     program_path = full_path_from_dentry(d_program_path);
     if (program_path == NULL){
@@ -383,7 +373,7 @@ int sys_open_wrapper(struct kprobe *ri, struct pt_regs *regs){
     struct filename *file_name =(struct filename*) regs -> si;
     struct open_flags *op = (struct open_flags*) (regs -> dx);
     const char *path;
-    char reduced_path[MAX_LEN];
+    char reduced_path[MAX_PATH_LEN];
     struct dentry *d_path;
 
     flags = op -> open_flag;
@@ -528,7 +518,7 @@ int mkdir_wrapper(struct kprobe *ri, struct pt_regs *regs){
 
     const char *path;
     /* char *reduced_path; */
-    char reduced_path[MAX_LEN];
+    char reduced_path[MAX_PATH_LEN];
     /* char *curr; */
 
     struct dentry *d_path;
@@ -701,7 +691,7 @@ void set_state(unsigned char state){
 
 
 static struct kprobe kp = {
-    .symbol_name = target_func,
+    .symbol_name = "do_filp_open",
     .pre_handler = sys_open_wrapper,
 };
 
