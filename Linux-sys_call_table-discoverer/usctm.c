@@ -41,8 +41,7 @@
 #include <asm/apic.h>
 #include <linux/syscalls.h>
 #include "./include/vtpmo.h"
-/* #include "../reference-monitor-kprobes/lib/reference_monitor.h" */
-#include "./lib/syscall_helper.h"
+#include "../lib/syscall_helper.h"
 
 
 MODULE_LICENSE("GPL");

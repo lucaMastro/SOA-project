@@ -29,7 +29,7 @@
 #include <linux/fs_struct.h>
 #include <linux/mm_types.h>
 
-#include "../Linux-sys_call_table-discoverer/lib/syscall_helper.h"
+#include "../lib/syscall_helper.h"
 #include "../reference-monitor-kprobes/lib/reference_monitor.h"
 #include "../lib/module_lad.h"
 
@@ -41,6 +41,10 @@ extern sys_call_helper_t sys_call_helper;
 
 #define CHECK_EUID 0
 
+
+static int installed_syscall[MAX_FREE];
+module_param_array(installed_syscall,int, NULL, 0444);
+MODULE_PARM_DESC(installed_syscall, "Installed syscall entries");
 
 /* --------------------------------------------------------- */
 /* this function works with kernel addresses only: */
@@ -356,6 +360,7 @@ static unsigned long sys_change_monitor_state = (unsigned long) __x64_sys_change
 
 int init_module(void) {
     int index;
+
     printk("%s: initializing. There are %d slot avaiable to install new syscalls\n",MODNAME, sys_call_helper.free_entries_count);
 
     index = sys_call_helper.install_syscall((unsigned long *) sys_add_path);
@@ -368,6 +373,10 @@ int init_module(void) {
     printk("%s: installed sys_change_monitor_password at %d\n",MODNAME, index);
     index = sys_call_helper.install_syscall((unsigned long *) sys_change_monitor_state);
     printk("%s: installed sys_change_monitor_state at %d\n",MODNAME, index);
+
+    for (index = 0; index < sys_call_helper.last_entry_used; index ++){
+        installed_syscall[index] = sys_call_helper.free_entries[index];
+    }
 
     return 0;
 
