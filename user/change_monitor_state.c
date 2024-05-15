@@ -1,48 +1,56 @@
-
 #include <string.h>
 #include <unistd.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include "./lib/input_password.h"
+#include "./lib/system_calls.h"
+#include "../lib/max_parameters.h"
+#include "../lib/reference_monitor_states.h"
 
-/*
-    @TODO: add the hidden way to get the password
-*/
-
-#define SYS_CHANGE_STATE    178
-
-
-
-
-int change_monitor_state(char *pass, unsigned char new_state){
-    int ret;
-    printf("changing state...\n");
-	/* ret = syscall(SYS_RM, hash, new_path); */
-	ret = syscall(SYS_CHANGE_STATE, pass, new_state);
-    if (ret < 0){
-        printf("something went wrong changing state\n");
-        return ret;
-    }
-
-    printf("state changed successfully\n");
-    return 0;
-}
 
 
 int main(int argc, char** argv){
     int ret;
-    unsigned char new_state;
-    /* char plain_text[256]; */
-    /* printf("reference monitor password: "); */
-    /* scanf("%s", plain_text); */
+    char *new_monitor_state;
+    unsigned char new_monitor_state_value;
+
+    if (argc < 2){
+        printf("[*] usage: %s <new_monitor_state>\n", argv[0]);
+        return -1;
+    }
+
+    char password[MAX_PASS_LEN] = {0};
+    printf("Give me monitor password: ");
+    get_pass(password, MAX_PASS_LEN);
 
     seteuid(0);
     setegid(0);
-    char *plain_text = "asd";
 
-    new_state = 2;
+    new_monitor_state = (char*) argv[1];
 
-    change_monitor_state(plain_text, new_state);
+    if (strcmp(new_monitor_state, "ON") == 0
+            || strcmp(new_monitor_state, "on") == 0) {
+        new_monitor_state_value = ON;
+    }
+    else if (strcmp(new_monitor_state, "OFF") == 0 ||
+            strcmp(new_monitor_state, "off") == 0) {
+        new_monitor_state_value = OFF;
+    }
+    else if (strcmp(new_monitor_state, "RECON") == 0 ||
+            strcmp(new_monitor_state, "recon") == 0) {
+        new_monitor_state_value = RECON;
+    }
+    else if (strcmp(new_monitor_state, "RECOFF") == 0 ||
+            strcmp(new_monitor_state, "recoff") == 0) {
+        new_monitor_state_value = RECOFF;
+    }
+    else{
+        new_monitor_state_value = INVALID_STATE;
+    }
+
+    change_monitor_state(password, new_monitor_state_value);
 
     return 0;
-
 }
+
+

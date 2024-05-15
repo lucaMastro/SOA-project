@@ -17,7 +17,7 @@ typedef struct _reference_monitor_t {
     int (*add_path)(const char *new_path);
     int (*rm_path)(const char *path);
     char* (*get_path)(int index);
-    void (*set_state)(unsigned char state);
+    int (*set_state)(unsigned char state);
 } reference_monitor_t;
 
 

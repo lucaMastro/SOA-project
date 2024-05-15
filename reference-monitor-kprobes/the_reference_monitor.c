@@ -78,49 +78,6 @@ struct dentry *get_dentry_from_path(const char *path){
 }
 
 
-/*********************************************************************/
-/* THIS IS DUPLICATE: IT HAS TO BE MANAGED BY IMPORT BETWEEN sys_call_installer
-    AND this file:
-    @TODO: manage duplicate function
-*/
-/* int compute_hash(char *input_string, int input_size, char *output_buffer) { */
-/*     struct crypto_shash *tfm; */
-/*     struct shash_desc *desc; */
-/*     int ret; */
-
-/*     tfm = crypto_alloc_shash("sha256", 0, 0); */
-/*     if (IS_ERR(tfm)) { */
-/*         printk("%s: error initializing transform\n", MODNAME); */
-/*         return PTR_ERR(tfm); */
-/*     } */
-
-/*     desc = kmalloc(sizeof(struct shash_desc) + crypto_shash_descsize(tfm), GFP_KERNEL); */
-/*     if (desc == NULL) { */
-/*         printk("%s: error initializing hash description\n", MODNAME); */
-/*         crypto_free_shash(tfm); */
-/*         return -ENOMEM; */
-/*     } */
-
-/*     desc->tfm = tfm; */
-
-/*     ret = crypto_shash_digest(desc, input_string, input_size, output_buffer); */
-/*     if (ret < 0) { */
-/*         printk("%s: error initializing hash computation\n", MODNAME); */
-/*         kfree(desc); */
-/*         crypto_free_shash(tfm); */
-/*         return ret; */
-/*     } */
-
-/*     kfree(desc); */
-/*     crypto_free_shash(tfm); */
-
-/*     return 0; */
-/* } */
-/*********************************************************************/
-
-
-
-
 void reduce_path(const char *original_path, char *out_buffer){
 
     char *curr;
@@ -680,11 +637,17 @@ char *get_path(int index){
 }
 
 
-void set_state(unsigned char state){
+int set_state(unsigned char state){
+    // check if state is valid:
+    if (state & INVALID_STATE){
+        printk("%s error: invalid state given; state will not be changed\n", MODNAME);
+        return -1;
+    }
     // sanifying input: keep last 2 bits
     state &= 0x3;
     reference_monitor.state = state;
     printk("%s: reference is now in the state: %d\n", MODNAME, state);
+    return 0;
 }
 
 

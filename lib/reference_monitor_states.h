@@ -6,3 +6,6 @@
 #define ON      0x1 // 01
 #define RECOFF  0x2 // 10
 #define RECON   0x3 // 11
+
+// last bit used to check if state is valid
+#define INVALID_STATE  1 << 7

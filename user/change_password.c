@@ -1,47 +1,41 @@
-
 #include <string.h>
 #include <unistd.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include "./lib/input_password.h"
+#include "./lib/system_calls.h"
+#include "../lib/max_parameters.h"
 
-/*
-    @TODO: add the hidden way to get the password
-*/
-#define SYS_CHANGE_PASS     177
-
-
-
-int change_monitor_password(char *old_pass, char *new_pass){
-    int ret;
-    printf("changing password...\n");
-	/* ret = syscall(SYS_RM, hash, new_path); */
-	ret = syscall(SYS_CHANGE_PASS, old_pass, new_pass);
-    if (ret < 0){
-        printf("something went wrong changing password\n");
-        return ret;
-    }
-
-    printf("password changed successfully\n");
-    return 0;
-}
 
 
 int main(int argc, char** argv){
     int ret;
-    /* char plain_text[256]; */
-    /* printf("reference monitor password: "); */
-    /* scanf("%s", plain_text); */
-    /* char new_plain_text[256]; */
-    /* printf("new reference monitor password: "); */
-    /* scanf("%s", new_plain_text); */
+    char *path_to_rm;
+    int paths_to_retrieve;
+    char *endptr;
+
+    char old_password[MAX_PASS_LEN] = {0};
+    char new_password[MAX_PASS_LEN] = {0};
+    char new_password_conf[MAX_PASS_LEN] = {0};
+
+    printf("Give me old monitor password: ");
+    get_pass(old_password, MAX_PASS_LEN);
+
+    printf("Give me new monitor password: ");
+    get_pass(new_password, MAX_PASS_LEN);
+
+    printf("Give me again new monitor password: ");
+    get_pass(new_password_conf, MAX_PASS_LEN);
+
+    if (strcmp(new_password, new_password_conf) != 0){
+        printf("error: new passwords are different\n");
+        return -1;
+    }
+
 
     seteuid(0);
     setegid(0);
-    char *plain_text = "asd";
-    char *new_plain_text = "lol";
 
-    change_monitor_password(plain_text, new_plain_text);
-
+    change_monitor_password(old_password, new_password);
     return 0;
-
 }

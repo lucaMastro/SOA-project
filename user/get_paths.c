@@ -1,56 +1,38 @@
-
 #include <string.h>
 #include <unistd.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include "./lib/input_password.h"
+#include "./lib/system_calls.h"
+#include "../lib/max_parameters.h"
 
-/*
-    @TODO: add the hidden way to get the password
-*/
-
-#define SYS_ADD             134
-#define SYS_GET             156
-#define SYS_RM              174
-#define SYS_CHANGE_PASS     177
-
-
-
-int get_paths(char *hash){
-
-    printf("\n\nRetrieving all paths...\n");
-    int paths_to_retrieve = 5;
-    char *paths[paths_to_retrieve];
-    int i;
-    for (i = 0; i< paths_to_retrieve; i++){
-        paths[i] = (char*) malloc(sizeof(char)*256);
-        strcpy(paths[i],"");
-    }
-
-    syscall(SYS_GET, hash, paths, paths_to_retrieve);
-    for (i = 0; i< paths_to_retrieve; i++){
-        printf("paths[%d] = %s\n", i, paths[i]);
-    }
-    for (i = 0; i< paths_to_retrieve; i++){
-       free(paths[i]);
-    }
-}
 
 
 int main(int argc, char** argv){
     int ret;
+    char *path_to_rm;
+    int paths_to_retrieve;
+    char *endptr;
 
-    char hash[65];
-    char new_hash[65];
-    char new_path[256];
-    char *static_new_path, *static_new_path_2;
-    int len;
+    if (argc < 2){
+        printf("[*] usage: %s <num_of_paths_to_retrieve>\n", argv[0]);
+        return -1;
+    }
+
+    char password[MAX_PASS_LEN] = {0};
+    printf("Give me monitor password: ");
+    get_pass(password, MAX_PASS_LEN);
+
+
+    paths_to_retrieve = (int) strtol(argv[1], &endptr, 10);
+    if (*endptr != '\0'){
+        printf("error: invalid integer given\n");
+        return -1;
+    }
 
     seteuid(0);
     setegid(0);
-    char *new_plain_text = "asd";
-    get_paths(new_plain_text);
 
+    get_paths(password, paths_to_retrieve);
     return 0;
-
 }
-

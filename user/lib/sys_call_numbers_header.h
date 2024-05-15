@@ -1,0 +1,6 @@
+#define SYS_ADD 134
+#define SYS_GET 156
+#define SYS_RM 174
+#define SYS_CHANGE_PASS 177
+#define SYS_CHANGE_STATE 178
+

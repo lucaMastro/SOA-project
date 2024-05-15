@@ -127,7 +127,9 @@ static unsigned long sys_add_path = (unsigned long) __x64_sys_add_path;
 
 /* ----------------------------------------------*/
 
-
+/*
+    returns number of path delivered to user
+*/
 __SYSCALL_DEFINEx(3, _get_paths, char* __user, monitor_pass, char** __user, buffer, int, max_num_of_path_to_retrieve){
     int i, min, ret;
     char *user_pass;
@@ -169,7 +171,7 @@ __SYSCALL_DEFINEx(3, _get_paths, char* __user, monitor_pass, char** __user, buff
     }
 
     spin_unlock(&(reference_monitor.lock));
-    return 0;
+    return min;
 
 }
 static unsigned long sys_get_paths = (unsigned long) __x64_sys_get_paths;
@@ -346,7 +348,11 @@ __SYSCALL_DEFINEx(2, _change_monitor_state, char* __user, monitor_pass, unsigned
         return -1;
     }
 
-    reference_monitor.set_state(new_state);
+    if (reference_monitor.set_state(new_state) < 0){
+        spin_unlock(&(reference_monitor.lock));
+        printk("%s error: something went wrong changing state\n", MODNAME);
+        return -1;
+    }
 
     spin_unlock(&(reference_monitor.lock));
     return 0;
@@ -374,7 +380,7 @@ int init_module(void) {
     index = sys_call_helper.install_syscall((unsigned long *) sys_change_monitor_state);
     printk("%s: installed sys_change_monitor_state at %d\n",MODNAME, index);
 
-    for (index = 0; index < sys_call_helper.last_entry_used; index ++){
+    for (index = 0; index <= sys_call_helper.last_entry_used; index ++){
         installed_syscall[index] = sys_call_helper.free_entries[index];
     }
 

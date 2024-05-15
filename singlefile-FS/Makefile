@@ -20,6 +20,6 @@ mount-fs:
 	sudo mount -o loop -t singlefilefs image ./mount/
 
 update:
-	./umount.sh
-	./mount.sh
+	./unload.sh
 	sudo dmesg -C
+	./load.sh

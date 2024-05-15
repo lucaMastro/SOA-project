@@ -1,24 +1,25 @@
 #!/bin/bash
 
-PS4="[*] "
+PS4='[\033[93m*\033[0m] '
 ROOT=`pwd`
 
 set -x
 
 cd $ROOT/sys_call_installer
-sudo rmmod sys_call_installer
-make clean
+./unload.sh
 
 cd $ROOT/Linux-sys_call_table-discoverer
-sudo rmmod the_usctm
-make clean
+./unload.sh
 
 cd $ROOT/reference-monitor-kprobes
-sudo rmmod reference_monitor
-make clean
+./unload.sh
 
 cd $ROOT/singlefile-FS
-./umount.sh
+./unload.sh
+
+# user space:
+cd $ROOT/user
+make clean
 
 set +x
 

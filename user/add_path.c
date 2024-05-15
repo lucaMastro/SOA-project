@@ -10,10 +10,10 @@
 
 int main(int argc, char** argv){
     int ret;
-    char *path_to_rm;
+    char *new_path;
 
     if (argc < 2){
-        printf("[*] usage: %s <path_to_rm>\n", argv[0]);
+        printf("[*] usage: %s <path_to_add>\n", argv[0]);
         return -1;
     }
 
@@ -24,8 +24,8 @@ int main(int argc, char** argv){
     seteuid(0);
     setegid(0);
 
-    path_to_rm = (char*) argv[1];
-    rm_path(password, path_to_rm);
+    new_path = (char*) argv[1];
+    add_path(password, new_path);
 
     return 0;
 }
