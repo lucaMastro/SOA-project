@@ -1,6 +1,5 @@
 
 all:
-	rm -rf ./bin
 	gcc -c ./lib/input_password.c -o ./lib/input_password.o
 	gcc -c ./lib/system_calls.c -o ./lib/system_calls.o
 	mkdir ./bin
@@ -11,6 +10,6 @@ all:
 	gcc -o ./bin/change_state ./change_monitor_state.c ./lib/system_calls.o ./lib/input_password.o
 
 clean:
-	rm -r ./bin
+	rm -rf ./bin
 	rm ./lib/*.o
 

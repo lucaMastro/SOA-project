@@ -17,6 +17,8 @@ cd $ROOT/reference-monitor-kprobes
 cd $ROOT/singlefile-FS
 ./unload.sh
 
+rm $ROOT/lib/*.o
+
 # user space:
 cd $ROOT/user
 make clean
