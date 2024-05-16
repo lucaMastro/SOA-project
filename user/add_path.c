@@ -21,9 +21,6 @@ int main(int argc, char** argv){
     printf("Give me monitor password: ");
     get_pass(password, MAX_PASS_LEN);
 
-    seteuid(0);
-    setegid(0);
-
     new_path = (char*) argv[1];
     add_path(password, new_path);
 

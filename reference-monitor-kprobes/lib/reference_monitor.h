@@ -9,7 +9,7 @@
 
 typedef struct _reference_monitor_t {
     unsigned char state;
-    // this will keep sha256 pass
+    // this will keep hashed pass
     char hashed_pass[HASH_SIZE];
     spinlock_t lock;
     struct dentry **filtered_paths;

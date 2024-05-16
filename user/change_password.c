@@ -33,9 +33,6 @@ int main(int argc, char** argv){
     }
 
 
-    seteuid(0);
-    setegid(0);
-
     change_monitor_password(old_password, new_password);
     return 0;
 }

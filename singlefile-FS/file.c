@@ -11,22 +11,16 @@
 #include "singlefilefs.h"
 
 
-
-// global variable needed because the size is resetted every time. This will trace size.
-static uint64_t file_size = 0;
 static DEFINE_MUTEX(write_lock);
 
 ssize_t onefilefs_read(struct file * filp, char __user * buf, size_t len, loff_t * off) {
 
     struct buffer_head *bh = NULL;
-    //struct inode * the_inode = filp->f_inode;
-    //uint64_t file_size = the_inode->i_size;
-    //uint64_t file_size = i_size_read(the_inode);
+    struct inode * the_inode = filp->f_inode;
+    uint64_t file_size = i_size_read(the_inode);
     int ret;
     loff_t offset;
     int block_to_read;//index of the block to be read from device
-
-    printk("%s: read operation called with len %ld - and offset %lld (the current file size is %lld)",MOD_NAME, len, *off, file_size);
 
     //this operation is not synchronized
     //*off can be changed concurrently
@@ -47,7 +41,7 @@ ssize_t onefilefs_read(struct file * filp, char __user * buf, size_t len, loff_t
     //compute the actual index of the the block to be read from device
     block_to_read = *off / DEFAULT_BLOCK_SIZE + 2; //the value 2 accounts for superblock and file-inode on device
 
-    printk("%s: read operation must access block %d of the device",MOD_NAME, block_to_read);
+    /* printk("%s: read operation must access block %d of the device",MOD_NAME, block_to_read); */
 
     bh = (struct buffer_head *)sb_bread(filp->f_path.dentry->d_inode->i_sb, block_to_read);
     if(!bh){
@@ -69,7 +63,7 @@ struct dentry *onefilefs_lookup(struct inode *parent_inode, struct dentry *child
     struct buffer_head *bh = NULL;
     struct inode *the_inode = NULL;
 
-    printk("%s: running the lookup inode-function for name %s",MOD_NAME,child_dentry->d_name.name);
+    /* printk("%s: running the lookup inode-function for name %s",MOD_NAME,child_dentry->d_name.name); */
 
     if(!strcmp(child_dentry->d_name.name, UNIQUE_FILE_NAME)){
 
@@ -116,17 +110,13 @@ struct dentry *onefilefs_lookup(struct inode *parent_inode, struct dentry *child
 
 /**********************************************************/
 ssize_t onefilefs_write(struct file * filp, const char __user * buf, size_t len, loff_t * off) {
-    /* since write is only append mode, off parameter useless. */
 
     struct buffer_head *bh = NULL;
     struct inode * the_inode = filp->f_inode;
-    //uint64_t file_size = the_inode->i_size;
-    //uint64_t file_size = i_size_read(the_inode);
     int ret;
     loff_t offset;
     int block_to_write; // index of the block to be written from device
-
-    printk("%s: write operation called with len %ld - and offset %lld (the current file size is %lld)",MOD_NAME, len, *off, file_size);
+    uint64_t file_size = i_size_read(the_inode);
 
     //determine the block level offset for the operation
     offset = file_size % DEFAULT_BLOCK_SIZE;
@@ -134,7 +124,7 @@ ssize_t onefilefs_write(struct file * filp, const char __user * buf, size_t len,
     //compute the actual index of the the block to be written from device
     block_to_write = file_size / DEFAULT_BLOCK_SIZE + 2; //the value 2 accounts for superblock and file-inode on device
 
-    printk("%s: write operation must access block %d of the device",MOD_NAME, block_to_write);
+    /* printk("%s: write operation must access block %d of the device",MOD_NAME, block_to_write); */
 
     bh = (struct buffer_head *)sb_bread(filp->f_path.dentry->d_inode->i_sb, block_to_write);
     if(!bh)
@@ -153,7 +143,6 @@ ssize_t onefilefs_write(struct file * filp, const char __user * buf, size_t len,
 
 
 ssize_t onefilefs_write_iter(struct kiocb *iocb, struct iov_iter *from) {
-    /* since write is only append mode, off parameter useless. */
 
     struct file *filp = iocb->ki_filp;
     char *buf= from->kvec->iov_base;
@@ -165,6 +154,7 @@ ssize_t onefilefs_write_iter(struct kiocb *iocb, struct iov_iter *from) {
     int block_to_write; // index of the block to be written from device
     ssize_t in_block_len;
 
+    uint64_t file_size = i_size_read(the_inode);
 
     mutex_lock(&write_lock);
     while (len != 0){
@@ -178,7 +168,7 @@ ssize_t onefilefs_write_iter(struct kiocb *iocb, struct iov_iter *from) {
         in_block_len = offset + len > DEFAULT_BLOCK_SIZE ? DEFAULT_BLOCK_SIZE - offset : len;
 
 
-        bh = (struct buffer_head *)sb_bread(filp->f_path.dentry->d_inode->i_sb, block_to_write);
+        bh = (struct buffer_head *)sb_bread(the_inode->i_sb, block_to_write);
         if(!bh)
             return -EIO;
 
@@ -209,11 +199,11 @@ const struct inode_operations onefilefs_inode_ops = {
     Since file has to be written by kernel, file_operations has to define the .write_iter function
     instead of the .write one as said here:
     https://stackoverflow.com/questions/71013101/kernel-space-write-a-file
-    according to documentaiton, the signature for this function is:
+    according to documentation, the signature for this function is:
     ssize_t (*write_iter) (struct kiocb *, struct iov_iter *);
 */
 const struct file_operations onefilefs_file_operations = {
     .owner = THIS_MODULE,
     .read = onefilefs_read,
-    .write_iter = onefilefs_write_iter, //please implement this function to complete the exercise
+    .write_iter = onefilefs_write_iter,
 };

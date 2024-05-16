@@ -55,9 +55,6 @@ MODULE_DESCRIPTION("USCTM");
 
 extern int sys_vtpmo(unsigned long vaddr);
 
-/* extern int compute_hash(char *input_string, int input_size, char *output_buffer); */
-/* extern reference_monitor_t reference_monitor; */
-
 #define ADDRESS_MASK 0xfffffffffffff000//to migrate
 
 #define START 			0xffffffff00000000ULL		// use this as starting address --> this is a biased search since does not start from 0xffff000000000000
@@ -279,32 +276,13 @@ int init_module(void) {
 			if(j>=MAX_FREE) break;
 		}
 
-    /* install_syscall(sys_add_path); */
-
-
         printk("%s: module correctly mounted\n",MODNAME);
-
-        /* char hash[32]; */
-        /* printk("%s: invoke compute hash",MODNAME); */
-        /* compute_hash("prova", 5, hash); */
-        /* char hex_hash[64]; */
-        /* bin2hex(hex_hash, hash, 32); */
-        /* printk("%s: hex_hash: %s",MODNAME, hex_hash); */
-        /* bin2hex(hex_hash, reference_monitor.hashed_pass, 32); */
-        /* printk("%s: hex_hash: %s",MODNAME, hex_hash); */
-        /* printk("%s: HASHED PWD COMPUTED\n",MODNAME); */
-
         return 0;
 
 }
 
 void cleanup_module(void) {
 
-	/* cr0 = read_cr0(); */
-    /* unprotect_memory(); */
-    /* hacked_syscall_tbl[FIRST_NI_SYSCALL] = (unsigned long*)hacked_ni_syscall; */
-    /* protect_memory(); */
-    /* uninstall_syscalls(); */
     printk("%s: shutting down\n",MODNAME);
 
 }

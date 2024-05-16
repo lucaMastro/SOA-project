@@ -30,9 +30,6 @@ int main(int argc, char** argv){
         return -1;
     }
 
-    seteuid(0);
-    setegid(0);
-
     get_paths(password, paths_to_retrieve);
     return 0;
 }

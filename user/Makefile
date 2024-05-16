@@ -11,5 +11,5 @@ all:
 
 clean:
 	rm -rf ./bin
-	rm ./lib/*.o
+	rm -f ./lib/*.o
 

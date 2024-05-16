@@ -23,9 +23,6 @@ int main(int argc, char** argv){
     printf("Give me monitor password: ");
     get_pass(password, MAX_PASS_LEN);
 
-    seteuid(0);
-    setegid(0);
-
     new_monitor_state = (char*) argv[1];
 
     if (strcmp(new_monitor_state, "ON") == 0

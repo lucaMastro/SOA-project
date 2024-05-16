@@ -39,7 +39,7 @@ extern sys_call_helper_t sys_call_helper;
 
 #define MODNAME "Sys_call installer"
 
-#define CHECK_EUID 0
+#define CHECK_EUID 1
 
 
 static int installed_syscall[MAX_FREE];
@@ -69,6 +69,15 @@ __SYSCALL_DEFINEx(2, _add_path, char* __user, monitor_pass, char* __user, new_pa
     char *user_pass;
     char *k_new_path;
     ssize_t len;
+    int euid;
+
+    /* euid check: */
+    euid = current->cred->euid.val;
+    if (CHECK_EUID && euid != 0)
+    {
+        printk("%s: inappropriate effective euid: %d in change_monitor_password\n", MODNAME, euid);
+        return -1;
+    }
 
     // this counts the '\0'. It has to be excluded in password check
     len = strnlen_user(monitor_pass, MAX_PASS_LEN);
@@ -135,6 +144,15 @@ __SYSCALL_DEFINEx(3, _get_paths, char* __user, monitor_pass, char** __user, buff
     char *user_pass;
     ssize_t len;
     char *current_path;
+    int euid;
+
+    /* euid check: */
+    euid = current->cred->euid.val;
+    if (CHECK_EUID && euid != 0)
+    {
+        printk("%s: inappropriate effective euid: %d in change_monitor_password\n", MODNAME, euid);
+        return -1;
+    }
 
     // this counts the '\0'. It has to be excluded in password check
     len = strnlen_user(monitor_pass, MAX_PASS_LEN);
@@ -184,6 +202,15 @@ __SYSCALL_DEFINEx(2, _rm_path, char* __user, monitor_pass, char* __user, path_to
     char *user_pass;
     char *k_path_to_remove;
     ssize_t len;
+    int euid;
+
+    /* euid check: */
+    euid = current->cred->euid.val;
+    if (CHECK_EUID && euid != 0)
+    {
+        printk("%s: inappropriate effective euid: %d in change_monitor_password\n", MODNAME, euid);
+        return -1;
+    }
 
     // this counts the '\0'. It has to be excluded in password check
     len = strnlen_user(monitor_pass, MAX_PASS_LEN);

@@ -9,7 +9,7 @@
 
 #define printf_red(format, ...)             \
     do {                                    \
-        printf("\x1b[32m");                 \
+        printf("\x1b[31m");                 \
         printf(format, ##__VA_ARGS__);      \
         printf("\x1b[0m");                  \
     } while (0)
@@ -63,7 +63,6 @@ int add_path(char *pass, char *new_path){
 int rm_path(char *pass, char* path){
     int ret;
     printf("removing path: %s\n", path);
-	/* ret = syscall(SYS_RM, pass, new_path); */
 	ret = syscall(SYS_RM, pass,path);
     if (ret < 0){
         printf_red("something went wrong removing path\n");
@@ -77,7 +76,6 @@ int rm_path(char *pass, char* path){
 int change_monitor_password(char *old_pass, char *new_pass){
     int ret;
     printf("changing password...\n");
-	/* ret = syscall(SYS_RM, pass, new_path); */
 	ret = syscall(SYS_CHANGE_PASS, old_pass, new_pass);
     if (ret < 0){
         printf_red("something went wrong changing password\n");

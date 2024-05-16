@@ -67,9 +67,7 @@ struct dentry *get_dentry_from_path(const char *path){
     struct path file_path;
     int ret;
     ret = kern_path(path, 0, &file_path);
-    /* ret = kern_path(full_path, 0, &file_path); */
     if (ret != 0){
-        /* printk("%s: error: for %s filename_lookup is %d\n", MODNAME, path, ret); */
         return NULL;
     }
 
@@ -143,7 +141,7 @@ char *full_path_from_dentry(struct dentry *dentry) {
 
         if (path_len + parent_name_len + 2 > MAX_PATH_LEN) {
             kfree(path);
-            return NULL; // Il percorso è troppo lungo
+            return NULL;
         }
 
         // Costruisci il percorso completo aggiungendo il nome della directory genitore
@@ -223,7 +221,6 @@ void log_filtered_write(unsigned long input){
 
 
     // open the file for reading it
-    /* printk("DEBUG: command file: %s\n", data->command_path); */
     f = filp_open(data->command_path, O_RDONLY, 0);
     if (IS_ERR(f)) {
         printk("%s: error opening command file\n", MODNAME);
@@ -272,16 +269,12 @@ void log_filtered_write(unsigned long input){
 
 
     ret = kernel_write(f, str, strlen(str), 0);
-    /* printk("DEBUG: ret %d\n", ret); */
 
     printk("%s: filtered write logged\n", MODNAME);
-    /* fput(f); */
-    /* printk("DEBUG: f %px\n", f); */
     ret = filp_close(f, NULL);
     kfree(data);
     vfree(huge_buffer);
     kfree(str);
-    /* printk("DEBUG: all freed\n"); */
     return;
 }
 
@@ -334,11 +327,8 @@ int sys_open_wrapper(struct kprobe *ri, struct pt_regs *regs){
     struct dentry *d_path;
 
     flags = op -> open_flag;
-    /* umode_t mode = op -> mode; */
     dfd = (int) regs -> di;
 
-    /* if (strstr(file_name -> name, dmesg_path) != NULL) */
-    /*     return 0; */
 
     // if not write mode or state is *off, just return
     if (
@@ -360,49 +350,18 @@ int sys_open_wrapper(struct kprobe *ri, struct pt_regs *regs){
     if (strstr(path, dmesg_path) != NULL)
         return 0;
 
-    /* printk("DEBUG: path in global: %s\n", path); */
     d_path = get_dentry_from_path(path);
     if (d_path == NULL){
-        /* printk("%s: failed getting dentry from path %s\n",MODNAME, path); */
         return 0;
     }
 
     if (global_checker(d_path)){
         op -> open_flag = O_RDONLY;
-        /* printk("%s: write on path: %s has been rejected\n",MODNAME, path); */
         task_function();
         return 0;
     }
 
-
-
-
-
-
-
-
-
-	//printk("%s: request on behalf of user %d - euid %d (current paths is: %s)\n",MODNAME,current->cred->uid.val,current->cred->euid.val,paths);
-
-	/* if(current->cred->uid.val == 0 || corrector){ */
-	/* 	printk("%s: need black list search\n",MODNAME); */
-	/* 	for(i=0; black_list[i] != NULL; i++){ */
-	/* 		if(strcmp(black_list[i],current->comm) == 0 ){ */
-	/* 			AUDIT */
-	/* 			printk("%s: current couple <program,UID> is black listed in the UID domain - execve rejected\n",MODNAME);//the domin can include EUID specification depedning in the value of 'corrector' */
-	/* 			goto reject; */
-	/* 		} */
-	/* 	} */
-	/* 	AUDIT */
-	/* 	printk("%s: current couple <program,UID> can run %s according to domain specification - finally executing the requested execve \n",MODNAME,paths); */
-
-	/* } */
-
 	return 0;
-
-/* reject: */
-/* 	regs->di = (unsigned long)NULL; */
-/* 	return 0; */
 
 }
 
@@ -420,7 +379,6 @@ int unlink_wrapper(struct kprobe *ri, struct pt_regs *regs){
     if (strstr(path, dmesg_path) != NULL)
         return 0;
 
-    /* printk("DEBUG: path in global: %s\n", path); */
     d_path = get_dentry_from_path(path);
     if (d_path == NULL){
         /* printk("%s: failed getting dentry from path %s\n",MODNAME, path); */
@@ -429,14 +387,12 @@ int unlink_wrapper(struct kprobe *ri, struct pt_regs *regs){
     if (global_checker(d_path)){
         regs -> si = (long unsigned int) NULL;
         task_function();
-        /* printk("%s: write on path: %s has been rejected\n",MODNAME, path); */
         return 0;
     }
     return 0;
 }
 
 int rmdir_wrapper(struct kprobe *ri, struct pt_regs *regs){
-    /* int dfd = (int) regs -> di; */
     struct filename *filename =(struct filename*) regs -> si;
     const char *path;
     struct dentry *d_path;
@@ -448,16 +404,13 @@ int rmdir_wrapper(struct kprobe *ri, struct pt_regs *regs){
     if (strstr(path, dmesg_path) != NULL)
         return 0;
 
-    /* printk("DEBUG: path in global: %s\n", path); */
     d_path = get_dentry_from_path(path);
     if (d_path == NULL){
-        /* printk("%s: failed getting dentry from path %s\n",MODNAME, path); */
         return 0;
     }
     if (global_checker(d_path)){
         regs -> si = (long unsigned int) NULL;
         task_function();
-        /* printk("%s: write on path: %s has been rejected\n",MODNAME, path); */
         return 0;
     }
     return 0;
@@ -508,7 +461,6 @@ int mkdir_wrapper(struct kprobe *ri, struct pt_regs *regs){
 
 
 int move_wrapper(struct kprobe *ri, struct pt_regs *regs){
-    /* int dfd = (int) regs -> di; */
     // this is the struct filename of old position
     struct filename *filename =(struct filename*) regs -> si;
     const char *path;
@@ -522,10 +474,8 @@ int move_wrapper(struct kprobe *ri, struct pt_regs *regs){
     if (strstr(path, dmesg_path) != NULL)
         return 0;
 
-    /* printk("DEBUG: path in global: %s\n", path); */
     d_path = get_dentry_from_path(path);
     if (d_path == NULL){
-        /* printk("%s: failed getting dentry from path %s\n",MODNAME, path); */
         return 0;
     }
     if (global_checker(d_path)){
@@ -681,7 +631,6 @@ static struct kprobe kp_rename = {
 
 static int init_reference_monitor(void) {
 	int ret;
-    /* struct dentry *pass_file_dentry; */
 	printk("%s: initializing\n",MODNAME);
 	ret = register_kprobe(&kp);
     if (ret < 0) {
