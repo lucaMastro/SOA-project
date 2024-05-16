@@ -159,7 +159,7 @@ Nel caso del progetto, le system call installate sono 5:
 
 Le ultime due non erano richieste nella traccia, ma sono state inserite perché
 credo che migliorino l'esperienza utente nell'interazione col software, senza
-considerare che sono state molto utili per il debugging nello sviluppo del
+considerare che sono state molto utili per il debugging durante lo sviluppo del
 software stesso.
 
 All'interno del corpo delle system call definite in questo modulo si fa molto
@@ -194,8 +194,10 @@ In particolare, le funzioni che sono state filtrate sono:
 La scelta di filtrare queste funzione è dettata dal fatto che tutte prendono in
 input una `struct *filename`, da cui è possibile ricavare il path del file. Da
 questo path è possibile ricavare la relativa `struct path` sfruttando la
-funzione `kernel_path`, che contiene un riferimento alla `dentry`. Filtrando
-queste funzioni, quindi, è possibile avere una uniformità di soluzione per il
+funzione `kernel_path()` con cui si _filla_ una `struct path` al cui interno è
+possibile trovare un riferimento alla `dentry`.
+
+In questo modo, quindi, è possibile avere una uniformità di soluzione per il
 recupero della `dentry` del file, che è una struttura _core_ all'interno del
 progetto.
 
@@ -242,9 +244,8 @@ motivazioni:
   per:
 
   - recuperare l'`inode` della directory parent e verificare se la cartella
-    parent risulta filtrata. Infatti, qualora la cartella parent risultasse
-    filtrata, tutte le scritture all'interno di nodi figli di quella directory
-    verranno filtrate.
+    parent risulta filtrata. Infatti, in questo caso, tutte le scritture
+    all'interno di nodi figli di quella directory dovranno essere filtrate.
   - recuperare il nome della directory parent, necessaria per ricostruire il
     path completo del file di cui necessita la systemcall `get_paths`
 
@@ -277,9 +278,12 @@ Oltre alla definizione dei quattro stati, è stato aggiunto l'`INVALID_STATE`:
 l'ultimo bit impostato a 1 identificherà uno stato non valido e che qualcosa è
 andato storto.
 
-L'istanza di questa struttura che viene inizializzata e usata viene anche
-esportata: verrà infatti usata dal modulo `sys_call_installer` nel corpo delle
-system call lì definite.
+È anche presente uno `spinlock`, con cui si sincronizzano le operazioni sulla
+stessa struttura dati.
+
+L'istanza di questa struttura utilizzata nel modulo viene anche esportata: verrà
+infatti usata dal modulo `sys_call_installer` nel corpo delle system call lì
+definite.
 
 #### deferred_work_t
 
@@ -296,7 +300,7 @@ Come da traccia, sono definiti anche i sorgenti e il Makefile per la generazione
 degli eseguibili utenti. Questi eseguibili useranno però delle system call
 nuove, la cui indicizzazione non è fissa. Si sfrutta quindi lo script
 `$ROOT_PROJECT/generate_syscall_numbers_header.sh`. Questo script legge il
-parametro di output del modulo `sys_call_installer`, lo analizza per rimuovere
+parametro di output del modulo `sys_call_installer`, lo analizza per filtrare
 quelli diversi da 0, e definisce una stringa composta da una serie di `#define`
 per definire il numero delle system call che verranno poi usate user space.
 Questa stringa verrà poi salvata all'interno del file
@@ -356,7 +360,7 @@ ai vari moduli.
 
 ## Gestione degli imports
 
-Nella cartella `$ROOT/lib` sono presenti gli header files che sono condivisi tra
-più moduli e/o lo spazio utente. In `$MODULE_ROOT/lib`, invece, ci sono gli
-header files che sono relativi al singolo modulo; stesso discorso vale per
-`$ROOT/user/lib`.
+Nella cartella `$ROOT_PROJECT/lib` sono presenti gli header files che sono
+condivisi tra più moduli e/o lo spazio utente. In
+`$ROOT_PROJECT/$MODULE_ROOT/lib`, invece, ci sono gli header files che sono
+relativi al singolo modulo; stesso discorso vale per `$ROOT_PROJECT/user/lib`.
