@@ -140,7 +140,9 @@ utilizzabili dal modulo `Linux-sys_call_table-discoverer` che li memorizza nel
 campo `free_entries`, la struttura tiene traccia della posizione dell'ultimo
 indice utilizzato per installare le systemcall nel campo `last_entry_used`.
 Grazie a questo modulo, l'installazione e la rimozione di nuove systemcall
-diventa molto semplice, rendendo il software molto mantenibile.
+diventa molto semplice, rendendo il software molto mantenibile: non servirà
+infatti specificare l'indice in cui memorizzarla, ma verrà identificato
+nell'indice dato da `free_entries[last_entry_used + 1]`.
 
 Nel caso del progetto, le system call installate sono 5:
 
