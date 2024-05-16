@@ -7,6 +7,19 @@
 #include "../../lib/max_parameters.h"
 #include "../../lib/reference_monitor_states.h"
 
+#define printf_red(format, ...)             \
+    do {                                    \
+        printf("\x1b[32m");                 \
+        printf(format, ##__VA_ARGS__);      \
+        printf("\x1b[0m");                  \
+    } while (0)
+
+#define printf_green(format, ...)           \
+    do {                                    \
+        printf("\x1b[32m");                 \
+        printf(format, ##__VA_ARGS__);      \
+        printf("\x1b[0m");                  \
+    } while (0)
 
 int get_paths(char *pass, int paths_num_to_retrieve){
 
@@ -21,11 +34,11 @@ int get_paths(char *pass, int paths_num_to_retrieve){
 
     ret = syscall(SYS_GET, pass, paths, paths_num_to_retrieve);
     if (ret < 0){
-        printf("Error in get_paths systemcall\n");
+        printf_red("Error in get_paths systemcall\n");
         return -1;
     }
 
-    printf("Retrieved %d paths:\n", ret);
+    printf_green("Retrieved %d path(s):\n", ret);
     for (i = 0; i< ret; i++){
         printf("paths[%d] = %s\n", i, paths[i]);
     }
@@ -40,11 +53,11 @@ int add_path(char *pass, char *new_path){
     printf("adding path: %s\n", new_path);
 	int ret = syscall(SYS_ADD, pass, new_path);
     if (ret < 0){
-        printf("something went wrong adding path\n");
+        printf_red("something went wrong adding path\n");
         return -1;
     }
 
-    printf("path added successfully\n");
+    printf_green("path added successfully\n");
 }
 
 int rm_path(char *pass, char* path){
@@ -53,11 +66,11 @@ int rm_path(char *pass, char* path){
 	/* ret = syscall(SYS_RM, pass, new_path); */
 	ret = syscall(SYS_RM, pass,path);
     if (ret < 0){
-        printf("something went wrong removing path\n");
+        printf_red("something went wrong removing path\n");
         return -1;
     }
 
-    printf("path removed successfully\n");
+    printf_green("path removed successfully\n");
 }
 
 
@@ -67,11 +80,11 @@ int change_monitor_password(char *old_pass, char *new_pass){
 	/* ret = syscall(SYS_RM, pass, new_path); */
 	ret = syscall(SYS_CHANGE_PASS, old_pass, new_pass);
     if (ret < 0){
-        printf("something went wrong changing password\n");
+        printf_red("something went wrong changing password\n");
         return ret;
     }
 
-    printf("password changed successfully\n");
+    printf_green("password changed successfully\n");
     return 0;
 }
 
@@ -80,17 +93,17 @@ int change_monitor_state(char *pass, unsigned char new_state){
 
     if (new_state > (OFF | ON | RECOFF | RECON) ||
             new_state < 0){
-        printf("error: invalid monitor state given\n");
+        printf_red("error: invalid monitor state given\n");
         return -1;
     }
 
     printf("changing state...\n");
 	ret = syscall(SYS_CHANGE_STATE, pass, new_state);
     if (ret < 0){
-        printf("something went wrong changing state\n");
+        printf_red("something went wrong changing state\n");
         return ret;
     }
 
-    printf("state changed successfully\n");
+    printf_green("state changed successfully\n");
     return 0;
 }
