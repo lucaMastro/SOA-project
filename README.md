@@ -2,7 +2,7 @@
 
 ## Indice
 
-1. [Traccia del progetto](#pecifica-monitor-di-riferimento-a-livello-kernel-per-la-protezione-dei-file)
+1. [Traccia del progetto](#specifica-monitor-di-riferimento-a-livello-kernel-per-la-protezione-dei-file)
 
 1. [Implementazione](#Implementazione)
 
