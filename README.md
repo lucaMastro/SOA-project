@@ -1,5 +1,24 @@
 # SOA-project
 
+## Indice
+
+1. [Traccia del progetto](#Specifica: Monitor di Riferimento a Livello Kernel
+   per la Protezione dei File)
+
+1. [Implementazione](#Implementazione)
+
+   1. [Singlefile-FS](#Singlefile-FS)
+   1. [Linux-sys_call_table-discoverer](#Linux-sys_call_table-discoverer)
+   1. [Sys_call_installer](#Sys_call_installer)
+   1. [reference-monitor-kprobes](#reference-monitor-kprobes)
+      1. [reference_monitor_t](#reference_monitor_t)
+      1. [deferred_work_t](#deferred_work_t)
+
+1. [user space](#user space)
+
+1. [Manuale di installazione](#Manuale di installazione)
+1. [Gestione degli imports](#Gestione degli imports)
+
 ## Specifica: Monitor di Riferimento a Livello Kernel per la Protezione dei File
 
 Questa specifica riguarda un Modulo del Kernel Linux (LKM) che implementa un
