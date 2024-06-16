@@ -94,67 +94,6 @@ struct dentry *get_dentry_from_path(const char *path){
 }
 
 
-struct dentry *get_parent_dentry(int dfd, const char *filename){
-
-    struct path base_path;
-    char *full_path;
-    char *buf;
-    char *parent_path;
-    struct dentry *parent_dentry;
-    char reduced_path[MAX_PATH_LEN];
-
-    if (dfd == AT_FDCWD) {
-        base_path = current->fs->pwd;
-    } else {
-        struct file *dir_file = fget(dfd);
-        if (!dir_file) {
-            printk("Failed to get file from dfd\n");
-            return 0;
-        }
-        base_path = dir_file->f_path;
-        path_get(&base_path);
-        fput(dir_file);
-    }
-
-    // resolve the full path of the file
-    full_path = kmalloc(MAX_PATH_LEN, GFP_KERNEL);
-    if (!full_path) {
-        printk("%s: Error: failed to allocate memory\n", MODNAME);
-        return 0;
-    }
-
-    buf = d_path(&base_path, full_path, MAX_PATH_LEN);
-    if (IS_ERR(buf)) {
-        printk("%s: Error: failed to resolve path\n", MODNAME);
-        kfree(full_path);
-        return 0;
-    }
-
-    // concatenate base path and filename
-    parent_path = kmalloc(MAX_PATH_LEN, GFP_KERNEL);
-    if (!parent_path) {
-        printk("Failed to allocate memory for parent_path\n");
-        kfree(full_path);
-        return 0;
-    }
-
-    snprintf(parent_path, MAX_PATH_LEN, "%s/%s", buf, filename);
-
-    // removing last token: the new file name
-    reduce_path(parent_path, reduced_path);
-
-    parent_dentry = get_dentry_from_path(reduced_path);
-    kfree(parent_path);
-    kfree(full_path);
-
-    return parent_dentry;
-
-}
-
-
-
-
-
 
 
 /*
@@ -403,17 +342,15 @@ int sys_open_wrapper(struct kprobe *ri, struct pt_regs *regs){
 
 
     path = (const char*) file_name -> name;
-    /* if (flags & creat_mode){ */
-    /*     reduce_path(file_name -> name, reduced_path); */
-    /*     path = reduced_path; */
-    /* } */
 
     if (strstr(path, dmesg_path) != NULL)
         return 0;
 
 
-    // if path starts with '/', it's an absolute path. otherwise its relative. In this
-    // case, change it to the full version:
+    /*
+     * if path starts with '/', it's an absolute path. otherwise its relative. In this
+     * case, change it to the full version:
+     * */
     if (path[0] != '/'){
         /* printk("DEBUG: relative path detected for: %s\n", path); */
         struct path base_path;
