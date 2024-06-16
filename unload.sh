@@ -22,6 +22,3 @@ rm $ROOT/lib/*.o
 # user space:
 cd $ROOT/user
 make clean
-
-set +x
-

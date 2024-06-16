@@ -24,5 +24,3 @@ cd $ROOT
 
 cd $ROOT/user
 make all
-
-set +x

@@ -5,5 +5,3 @@ set -x
 
 sudo rmmod the_usctm
 make clean
-
-set +x

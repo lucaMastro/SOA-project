@@ -8,5 +8,3 @@ set -ex
 
 make all
 sudo insmod reference_monitor.ko starting_pass=$password singlefile_fs_path=$ROOT/singlefile-FS/mount/the-file
-
-set +x

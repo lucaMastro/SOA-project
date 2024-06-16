@@ -61,21 +61,6 @@ struct open_flags {
 };
 
 
-
-
-struct dentry *get_dentry_from_path(const char *path){
-    struct path file_path;
-    int ret;
-    ret = kern_path(path, 0, &file_path);
-    if (ret != 0){
-        return NULL;
-    }
-
-    mntput(file_path.mnt);
-    return file_path.dentry;
-}
-
-
 void reduce_path(const char *original_path, char *out_buffer){
 
     char *curr;
@@ -94,6 +79,81 @@ void reduce_path(const char *original_path, char *out_buffer){
     kfree(reduced_path);
 
 }
+
+
+struct dentry *get_dentry_from_path(const char *path){
+    struct path file_path;
+    int ret;
+    ret = kern_path(path, 0, &file_path);
+    if (ret != 0){
+        return NULL;
+    }
+
+    mntput(file_path.mnt);
+    return file_path.dentry;
+}
+
+
+struct dentry *get_parent_dentry(int dfd, const char *filename){
+
+    struct path base_path;
+    char *full_path;
+    char *buf;
+    char *parent_path;
+    struct dentry *parent_dentry;
+    char reduced_path[MAX_PATH_LEN];
+
+    if (dfd == AT_FDCWD) {
+        base_path = current->fs->pwd;
+    } else {
+        struct file *dir_file = fget(dfd);
+        if (!dir_file) {
+            printk("Failed to get file from dfd\n");
+            return 0;
+        }
+        base_path = dir_file->f_path;
+        path_get(&base_path);
+        fput(dir_file);
+    }
+
+    // resolve the full path of the file
+    full_path = kmalloc(MAX_PATH_LEN, GFP_KERNEL);
+    if (!full_path) {
+        printk("%s: Error: failed to allocate memory\n", MODNAME);
+        return 0;
+    }
+
+    buf = d_path(&base_path, full_path, MAX_PATH_LEN);
+    if (IS_ERR(buf)) {
+        printk("%s: Error: failed to resolve path\n", MODNAME);
+        kfree(full_path);
+        return 0;
+    }
+
+    // concatenate base path and filename
+    parent_path = kmalloc(MAX_PATH_LEN, GFP_KERNEL);
+    if (!parent_path) {
+        printk("Failed to allocate memory for parent_path\n");
+        kfree(full_path);
+        return 0;
+    }
+
+    snprintf(parent_path, MAX_PATH_LEN, "%s/%s", buf, filename);
+
+    // removing last token: the new file name
+    reduce_path(parent_path, reduced_path);
+
+    parent_dentry = get_dentry_from_path(reduced_path);
+    kfree(parent_path);
+    kfree(full_path);
+
+    return parent_dentry;
+
+}
+
+
+
+
 
 
 
@@ -323,9 +383,11 @@ int sys_open_wrapper(struct kprobe *ri, struct pt_regs *regs){
     struct filename *file_name =(struct filename*) regs -> si;
     struct open_flags *op = (struct open_flags*) (regs -> dx);
     const char *path;
-    char reduced_path[MAX_PATH_LEN];
-    struct dentry *d_path;
+    struct dentry *path_d;
+    char full_path[MAX_PATH_LEN];
+    char parent_path[MAX_PATH_LEN] = {'\0'};
 
+    /* printk("DEBUG:  compare: %d\n", ); */
     flags = op -> open_flag;
     dfd = (int) regs -> di;
 
@@ -340,22 +402,73 @@ int sys_open_wrapper(struct kprobe *ri, struct pt_regs *regs){
     }
 
 
-    if (flags & creat_mode){
-        reduce_path(file_name -> name, reduced_path);
-        path = reduced_path;
-    }
-    else
-        path = (const char*) file_name -> name;
+    path = (const char*) file_name -> name;
+    /* if (flags & creat_mode){ */
+    /*     reduce_path(file_name -> name, reduced_path); */
+    /*     path = reduced_path; */
+    /* } */
 
     if (strstr(path, dmesg_path) != NULL)
         return 0;
 
-    d_path = get_dentry_from_path(path);
-    if (d_path == NULL){
-        return 0;
+
+    // if path starts with '/', it's an absolute path. otherwise its relative. In this
+    // case, change it to the full version:
+    if (path[0] != '/'){
+        /* printk("DEBUG: relative path detected for: %s\n", path); */
+        struct path base_path;
+        struct dentry *base_dentry;
+        char *s_base_path;
+
+        // resolving base path
+        if (dfd == AT_FDCWD) {
+            base_path = current->fs->pwd;
+        } else {
+            struct file *dir_file = fget(dfd);
+            if (!dir_file) {
+                return 0;
+            }
+            base_path = dir_file->f_path;
+            fput(dir_file);
+        }
+
+        // getting base dentry and its path
+        base_dentry = base_path.dentry;
+        s_base_path = full_path_from_dentry(base_dentry);
+
+        /* printk("DEBUG: got base path: %s\n", s_base_path); */
+
+        // concat with the current relative name
+        snprintf(full_path, MAX_PATH_LEN, "%s/%s", s_base_path, path);
+
+        /* printk("DEBUG: concatenated: %s\n", full_path); */
+        // saving parent directory path
+        reduce_path(full_path, parent_path);
+
+        /* printk("DEBUG: reduced; this is parent_path: %s\n", parent_path); */
+
+        // changing the path to the full one
+        path = full_path;
     }
 
-    if (global_checker(d_path)){
+
+    // trying getting dentry
+    path_d = get_dentry_from_path(path);
+    if (path_d == NULL){
+        // path doesnt exist yet: it's a creation. Then I need the parent dir. The open is
+        // permitted only if parent inode is not filtered. do it only if parent has been
+        // set:
+        if (!strcmp(parent_path, "")){
+            return 0;
+        }
+        /* printk("DEBUG: trying getting parent with path %s; full_path: %s\n", parent_path, path); */
+        path_d = get_dentry_from_path(parent_path);
+        if (path_d == NULL){
+            return 0;
+        }
+    }
+
+    if (global_checker(path_d)){
         op -> open_flag = O_RDONLY;
         task_function();
         return 0;
@@ -424,14 +537,13 @@ int rmdir_wrapper(struct kprobe *ri, struct pt_regs *regs){
     token: /a/seuqence/of/token.
 */
 int mkdir_wrapper(struct kprobe *ri, struct pt_regs *regs){
+    int dfd = (int) regs -> di;
     struct filename *filename =(struct filename*) regs -> si;
 
     const char *path;
-    /* char *reduced_path; */
-    char reduced_path[MAX_PATH_LEN];
-    /* char *curr; */
-
     struct dentry *d_path;
+    char full_path[MAX_PATH_LEN];
+    char parent_path[MAX_PATH_LEN];
 
     if (! (IS_MON_ON())){
         return 0;
@@ -442,14 +554,44 @@ int mkdir_wrapper(struct kprobe *ri, struct pt_regs *regs){
     if (strstr(path, dmesg_path) != NULL)
         return 0;
 
-    reduce_path(path, reduced_path);
 
-    d_path = get_dentry_from_path(reduced_path);
+    // if path starts with '/', it's an absolute path. otherwise its relative. In this
+    // case, change it to the full version and keep the parent:
+    if (path[0] != '/'){
+        struct path base_path;
+        struct dentry *base_dentry;
+        char *s_base_path;
+
+        // resolving base path
+        if (dfd == AT_FDCWD) {
+            base_path = current->fs->pwd;
+        } else {
+            struct file *dir_file = fget(dfd);
+            if (!dir_file) {
+                return 0;
+            }
+            base_path = dir_file->f_path;
+            fput(dir_file);
+        }
+
+        // getting base dentry and its path
+        base_dentry = base_path.dentry;
+        s_base_path = full_path_from_dentry(base_dentry);
+
+        // concat with the current relative name
+        snprintf(full_path, MAX_PATH_LEN, "%s/%s", s_base_path, path);
+
+        // saving parent directory path
+        reduce_path(full_path, parent_path);
+    }
+    else{
+        reduce_path(path, parent_path);
+    }
+
+    d_path = get_dentry_from_path(parent_path);
     if (d_path == NULL){
-        /* printk("%s: failed getting dentry from path %s\n",MODNAME, path); */
         return 0;
     }
-    /* kfree(reduced_path); */
 
     if (global_checker(d_path)){
         regs -> si = (long unsigned int) NULL;
@@ -666,6 +808,7 @@ static int init_reference_monitor(void) {
 
     // init reference_monitor struct
     reference_monitor.state = RECON;
+    /* reference_monitor.state = RECOFF; */
 	spin_lock_init(&(reference_monitor.lock));
     reference_monitor.filtered_paths_len = 0;
     reference_monitor.filtered_paths = kmalloc( sizeof(struct dentry *), GFP_KERNEL);
@@ -714,4 +857,5 @@ module_exit(exit_reference_monitor);
 
 
 EXPORT_SYMBOL(reference_monitor);
+
 
