@@ -23,7 +23,7 @@
 
 int get_paths(char *pass, int paths_num_to_retrieve){
 
-    printf("retrieving all paths...\n");
+    printf("retrieving paths...\n");
     char *paths[paths_num_to_retrieve];
     int i;
     int ret;
