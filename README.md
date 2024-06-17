@@ -159,7 +159,7 @@ campo `free_entries` della struttura dati `sys_call_helper_t`, la struttura tien
 indice utilizzato per installare le systemcall nel campo `last_entry_used`.
 Grazie a questo modulo, l'installazione e la rimozione di nuove systemcall
 diventa molto semplice, rendendo il software molto mantenibile: non servirà
-infatti specificare l'indice in cui memorizzarla, ma verrà identificato
+infatti specificare l'indice della systemcall table in cui memorizzarla, ma verrà identificato
 nell'indice dato da `free_entries[last_entry_used + 1]`.
 
 Nel caso del progetto, le system call installate sono 5:
