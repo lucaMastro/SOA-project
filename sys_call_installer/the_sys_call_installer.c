@@ -81,6 +81,10 @@ __SYSCALL_DEFINEx(2, _add_path, char* __user, monitor_pass, char* __user, new_pa
 
     // this counts the '\0'. It has to be excluded in password check
     len = strnlen_user(monitor_pass, MAX_PASS_LEN);
+    if (len > MAX_PASS_LEN){
+        printk("DEBUG: strnlen returned len > MAX_PASS_LEN: %ld > %d\n", len, MAX_PASS_LEN);
+        return -1;
+    }
     user_pass = (char*) kmalloc(sizeof(char) * len, GFP_KERNEL);
     if (user_pass == NULL){
         printk("%s: error allocating buffer for pass digest\n", MODNAME);
@@ -156,6 +160,11 @@ __SYSCALL_DEFINEx(3, _get_paths, char* __user, monitor_pass, char** __user, buff
 
     // this counts the '\0'. It has to be excluded in password check
     len = strnlen_user(monitor_pass, MAX_PASS_LEN);
+    if (len > MAX_PASS_LEN){
+        printk("DEBUG: strnlen returned len > MAX_PASS_LEN: %ld > %d\n", len, MAX_PASS_LEN);
+        return -1;
+    }
+
     user_pass = (char*) kmalloc(sizeof(char) * len, GFP_KERNEL);
     if (user_pass == NULL){
         printk("%s: error allocating buffer for pass digest\n", MODNAME);
@@ -214,6 +223,10 @@ __SYSCALL_DEFINEx(2, _rm_path, char* __user, monitor_pass, char* __user, path_to
 
     // this counts the '\0'. It has to be excluded in password check
     len = strnlen_user(monitor_pass, MAX_PASS_LEN);
+    if (len > MAX_PASS_LEN){
+        printk("DEBUG: strnlen returned len > MAX_PASS_LEN: %ld > %d\n", len, MAX_PASS_LEN);
+        return -1;
+    }
     user_pass = (char*) kmalloc(sizeof(char) * len, GFP_KERNEL);
     if (user_pass == NULL){
         printk("%s: error allocating buffer for pass digest\n", MODNAME);
@@ -287,6 +300,10 @@ __SYSCALL_DEFINEx(2, _change_monitor_password, char*, old_pass, char*, new_pass)
 
     // this counts the '\0'. It has to be excluded in password check
     len = strnlen_user(old_pass, MAX_PASS_LEN);
+    if (len > MAX_PASS_LEN){
+        printk("DEBUG: strnlen returned len > MAX_PASS_LEN: %ld > %d\n", len, MAX_PASS_LEN);
+        return -1;
+    }
     old_pass_k = (char*) kmalloc(sizeof(char) * len, GFP_KERNEL);
     if (old_pass_k == NULL){
         printk("%s: error allocating buffer for pass digest\n", MODNAME);
@@ -311,6 +328,10 @@ __SYSCALL_DEFINEx(2, _change_monitor_password, char*, old_pass, char*, new_pass)
 
     // this counts the '\0'. It has to be excluded in password check
     len = strnlen_user(new_pass, MAX_PASS_LEN);
+    if (len > MAX_PASS_LEN){
+        printk("DEBUG: strnlen returned len > MAX_PASS_LEN: %ld > %d\n", len, MAX_PASS_LEN);
+        return -1;
+    }
     new_pass_k = (char*) kmalloc(sizeof(char) * len, GFP_KERNEL);
     if (new_pass_k == NULL){
 	    spin_unlock(&(reference_monitor.lock));
@@ -353,6 +374,10 @@ __SYSCALL_DEFINEx(2, _change_monitor_state, char* __user, monitor_pass, unsigned
     }
     // this counts the '\0'. It has to be excluded in password check
     len = strnlen_user(monitor_pass, MAX_PASS_LEN);
+    if (len > MAX_PASS_LEN){
+        printk("DEBUG: strnlen returned len > MAX_PASS_LEN: %ld > %d\n", len, MAX_PASS_LEN);
+        return -1;
+    }
     user_pass = (char*) kmalloc(sizeof(char) * len, GFP_KERNEL);
     if (user_pass == NULL){
         printk("%s: error allocating buffer for pass digest\n", MODNAME);
