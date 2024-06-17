@@ -170,8 +170,7 @@ Nel caso del progetto, le system call installate sono 5:
   controllati dal reference monitor;
 - `sys_change_monitor_state`: è la system call che si occupa di cambiare lo
   stato del reference monitor;
-- `sys_get_paths`: è la system call che si occupa di inserire un nuovo path tra
-  quelli controllati dal reference monitor;
+- `sys_get_paths`: è la system call che si occupa di recuperare i path controllati dal reference monitor;
 - `sys_change_monitor_password`: è la system call che si occupa di cambiare la
   password del reference monitor;
 
