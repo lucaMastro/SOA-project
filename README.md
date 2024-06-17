@@ -155,12 +155,13 @@ utilizzata nel modulo `sys_call_installer`, discusso successivamente.
 Questo modulo ha la responsabilità di installare e disinstallare syscall in
 maniera del tutto trasparente. Dopo aver recuperato gli indici delle entries
 utilizzabili dal modulo `Linux-sys_call_table-discoverer` che li memorizza nel
-campo `free_entries` della struttura dati `sys_call_helper_t`, la struttura tiene traccia della posizione dell'ultimo
-indice utilizzato per installare le systemcall nel campo `last_entry_used`.
-Grazie a questo modulo, l'installazione e la rimozione di nuove systemcall
-diventa molto semplice, rendendo il software molto mantenibile: non servirà
-infatti specificare l'indice della systemcall table in cui memorizzarla, ma verrà identificato
-nell'indice dato da `free_entries[last_entry_used + 1]`.
+campo `free_entries` della struttura dati `sys_call_helper_t`, la struttura
+tiene traccia della posizione dell'ultimo indice utilizzato per installare le
+systemcall nel campo `last_entry_used`. Grazie a questo modulo, l'installazione
+e la rimozione di nuove systemcall diventa molto semplice, rendendo il software
+molto mantenibile: non servirà infatti specificare l'indice della systemcall
+table in cui memorizzarla, ma verrà identificato nell'indice dato da
+`free_entries[last_entry_used + 1]`.
 
 Nel caso del progetto, le system call installate sono 5:
 
@@ -170,7 +171,8 @@ Nel caso del progetto, le system call installate sono 5:
   controllati dal reference monitor;
 - `sys_change_monitor_state`: è la system call che si occupa di cambiare lo
   stato del reference monitor;
-- `sys_get_paths`: è la system call che si occupa di recuperare i path controllati dal reference monitor;
+- `sys_get_paths`: è la system call che si occupa di recuperare i path
+  controllati dal reference monitor;
 - `sys_change_monitor_password`: è la system call che si occupa di cambiare la
   password del reference monitor;
 
@@ -199,8 +201,8 @@ smontato precedentemente rispetto al modulo da cui dipende.
 
 Questo modulo è il _core_ del progetto. Per poter filtrare operazioni di
 scrittura su file specificati, è stato utilizzato il meccanismo delle `kprobes`
-per aggiungere dei wrapper a diverse funzioni che realizzano scritture.
-In particolare, le funzioni che sono state filtrate sono:
+per aggiungere dei wrapper a diverse funzioni che realizzano scritture. In
+particolare, le funzioni che sono state filtrate sono:
 
 - `do_filp_open`: per filtrare le operazioni di scrittura o creazione di file
 - `do_unlinkat`: per filtrare comandi per la rimozione di file, come `rm`
@@ -211,8 +213,8 @@ In particolare, le funzioni che sono state filtrate sono:
 La scelta di filtrare queste funzione è dettata dal fatto che tutte prendono in
 input una `struct *filename`, da cui è possibile ricavare il path del file. Da
 questo path è possibile ricavare la relativa `struct path` sfruttando la
-funzione `kernel_path()`, al cui interno è
-possibile trovare un riferimento alla `dentry`.
+funzione `kernel_path()`, al cui interno è possibile trovare un riferimento alla
+`dentry`.
 
 In questo modo, quindi, è possibile avere una uniformità di soluzione per il
 recupero della `dentry` del file, che è una struttura _core_ all'interno del
@@ -295,10 +297,11 @@ Oltre alla definizione dei quattro stati, è stato aggiunto l'`INVALID_STATE`:
 l'ultimo bit impostato a 1 identificherà uno stato non valido e che qualcosa è
 andato storto.
 
-Nella struttura `reference_monitor_t` è anche presente uno `spinlock`, con cui si sincronizzano le operazioni sulla
-struttura dati stessa. Affinché ciò abbia senso, l'istanza utilizzata dai vari moduli deve essere la stessa e perciò quella inizializzata in questo modulo viene anche esportata: verrà
-infatti usata dal modulo `sys_call_installer` nel corpo delle system call lì
-definite.
+Nella struttura `reference_monitor_t` è anche presente uno `spinlock`, con cui
+si sincronizzano le operazioni sulla struttura dati stessa. Affinché ciò abbia
+senso, l'istanza utilizzata dai vari moduli deve essere la stessa e perciò
+quella inizializzata in questo modulo viene anche esportata: verrà infatti usata
+dal modulo `sys_call_installer` nel corpo delle system call lì definite.
 
 #### deferred_work_t
 
@@ -364,8 +367,9 @@ non fallire, deve essere lanciato dall'utente root.
 Per semplificare e automatizzare la compilazione dei moduli, il loro montaggio e
 la generazione dei file eseguibili utente è stato pensato lo script `load.sh`.
 Questo script compila i vari moduli tenendo conto di eventuali dipendenze tra
-essi, genera l'header file usato lato utente per gli indici delle system call e
-poi compila i binari all'interno della cartella `$ROOT_PROJECT/user/bin`.
+essi chiedendo anche la password iniziale da usare come password per il monitor,
+genera l'header file usato lato utente per gli indici delle system call e poi
+compila i binari all'interno della cartella `$ROOT_PROJECT/user/bin`.
 
 Dualmente, lo script `unload.sh` si occupa dello smontaggio e dell'eliminazione
 dei file di output dei vari processi.
