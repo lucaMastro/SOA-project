@@ -199,10 +199,10 @@ smontato precedentemente rispetto al modulo da cui dipende.
 
 Questo modulo è il _core_ del progetto. Per poter filtrare operazioni di
 scrittura su file specificati, è stato utilizzato il meccanismo delle `kprobes`
-per aggiungere definire dei wrapper a diverse funzioni che realizzano scritture.
+per aggiungere dei wrapper a diverse funzioni che realizzano scritture.
 In particolare, le funzioni che sono state filtrate sono:
 
-- `do_filp_open`: per filtrare le operazioni di scrittura su file
+- `do_filp_open`: per filtrare le operazioni di scrittura o creazione di file
 - `do_unlinkat`: per filtrare comandi per la rimozione di file, come `rm`
 - `do_rmdir`: per filtrare comandi per la rimozione di directory, come `rmdir`
 - `do_mkdirat`: per filtrare comandi per la creazione di directory, come `mkdir`
@@ -211,7 +211,7 @@ In particolare, le funzioni che sono state filtrate sono:
 La scelta di filtrare queste funzione è dettata dal fatto che tutte prendono in
 input una `struct *filename`, da cui è possibile ricavare il path del file. Da
 questo path è possibile ricavare la relativa `struct path` sfruttando la
-funzione `kernel_path()` con cui si _filla_ una `struct path` al cui interno è
+funzione `kernel_path()`, al cui interno è
 possibile trovare un riferimento alla `dentry`.
 
 In questo modo, quindi, è possibile avere una uniformità di soluzione per il
@@ -295,10 +295,8 @@ Oltre alla definizione dei quattro stati, è stato aggiunto l'`INVALID_STATE`:
 l'ultimo bit impostato a 1 identificherà uno stato non valido e che qualcosa è
 andato storto.
 
-È anche presente uno `spinlock`, con cui si sincronizzano le operazioni sulla
-stessa struttura dati.
-
-L'istanza di questa struttura utilizzata nel modulo viene anche esportata: verrà
+Nella struttura `reference_monitor_t` è anche presente uno `spinlock`, con cui si sincronizzano le operazioni sulla
+struttura dati stessa. Affinché ciò abbia senso, l'istanza utilizzata dai vari moduli deve essere la stessa e perciò quella inizializzata in questo modulo viene anche esportata: verrà
 infatti usata dal modulo `sys_call_installer` nel corpo delle system call lì
 definite.
 
@@ -340,7 +338,7 @@ Nella cartella `ROOT_PROJECT/user` sono definiti tutti i file sorgenti per gli
 eseguibili che invocheranno le systemcall. In realtà, questi sorgenti si
 occupano solo della gestione dei parametri passati da riga comando. Includono
 però l'header file `system_calls.h`, definito in `ROOT_PROJECT/user/lib` insieme
-al relativo file sorgente da cui generare il `.o` che deve essere linkato in
+al relativo file sorgente da cui generare il `.o` che deve essere _linkato_ in
 fase di compilazione. In questo header file sono definite le funzioni che
 invocano di fatto la systemcall opportuna.
 
@@ -365,8 +363,8 @@ non fallire, deve essere lanciato dall'utente root.
 
 Per semplificare e automatizzare la compilazione dei moduli, il loro montaggio e
 la generazione dei file eseguibili utente è stato pensato lo script `load.sh`.
-Questo script compila i vari moduli tenendo conto di eventuali dipendenze da
-esse, genera l'header file usato lato utente per gli indici delle system call e
+Questo script compila i vari moduli tenendo conto di eventuali dipendenze tra
+essi, genera l'header file usato lato utente per gli indici delle system call e
 poi compila i binari all'interno della cartella `$ROOT_PROJECT/user/bin`.
 
 Dualmente, lo script `unload.sh` si occupa dello smontaggio e dell'eliminazione
