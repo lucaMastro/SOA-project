@@ -155,7 +155,7 @@ utilizzata nel modulo `sys_call_installer`, discusso successivamente.
 Questo modulo ha la responsabilità di installare e disinstallare syscall in
 maniera del tutto trasparente. Dopo aver recuperato gli indici delle entries
 utilizzabili dal modulo `Linux-sys_call_table-discoverer` che li memorizza nel
-campo `free_entries`, la struttura tiene traccia della posizione dell'ultimo
+campo `free_entries` della struttura dati `sys_call_helper_t`, la struttura tiene traccia della posizione dell'ultimo
 indice utilizzato per installare le systemcall nel campo `last_entry_used`.
 Grazie a questo modulo, l'installazione e la rimozione di nuove systemcall
 diventa molto semplice, rendendo il software molto mantenibile: non servirà
