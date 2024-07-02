@@ -24,9 +24,11 @@
 int get_paths(char *pass, int paths_num_to_retrieve){
 
     printf("retrieving paths...\n");
-    char *paths[paths_num_to_retrieve];
+    char **paths;
     int i;
     int ret;
+
+    paths = malloc(sizeof(char*) * paths_num_to_retrieve);
     for (i = 0; i< paths_num_to_retrieve; i++){
         paths[i] = (char*) malloc(sizeof(char) * MAX_PATH_LEN);
         strcpy(paths[i],"");
@@ -45,6 +47,7 @@ int get_paths(char *pass, int paths_num_to_retrieve){
     for (i = 0; i< paths_num_to_retrieve; i++){
        free(paths[i]);
     }
+    free(paths);
 }
 
 

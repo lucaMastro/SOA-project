@@ -9,11 +9,12 @@ sudo dmesg -C
 cd $ROOT/singlefile-FS
 ./load.sh
 
+cd $ROOT/Linux-sys_call_table-discoverer
+./load.sh
+
 cd $ROOT/reference-monitor-kprobes
 ./load.sh
 
-cd $ROOT/Linux-sys_call_table-discoverer
-./load.sh
 
 cd $ROOT/sys_call_installer
 ./load.sh

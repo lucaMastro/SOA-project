@@ -51,6 +51,7 @@ reference_monitor_t reference_monitor;
 
 
 const char *dmesg_path="/run/log/journal/";
+const char *dot = ".";
 
 struct open_flags {
 	int open_flag;
@@ -173,7 +174,7 @@ int global_checker(struct dentry *d_path){
     while (d_path != parent) {
         if (find_already_present_path(d_path) >= 0 ){
             full_path = full_path_from_dentry(d_path);
-            printk("%s: found path %s in filtered list. Write operation will be rejected. This may cause a SEGFAULT\n",MODNAME, full_path);
+            printk("%s: found path %s in filtered list. Write operation will be rejected.\n",MODNAME, full_path);
             kfree(full_path);
             return 1;
         }
@@ -313,7 +314,7 @@ void task_function(void){
 /**************************************************/
 
 
-int sys_open_wrapper(struct kprobe *ri, struct pt_regs *regs){
+int sys_open_wrapper(struct kretprobe_instance *ri, struct pt_regs *regs){
 
     int dfd;
     int flags;
@@ -337,14 +338,14 @@ int sys_open_wrapper(struct kprobe *ri, struct pt_regs *regs){
          ! (IS_MON_ON())
         )
     {
-        return 0;
+        return 1;
     }
 
 
     path = (const char*) file_name -> name;
 
     if (strstr(path, dmesg_path) != NULL)
-        return 0;
+        return 1;
 
 
     /*
@@ -363,7 +364,7 @@ int sys_open_wrapper(struct kprobe *ri, struct pt_regs *regs){
         } else {
             struct file *dir_file = fget(dfd);
             if (!dir_file) {
-                return 0;
+                return 1;
             }
             base_path = dir_file->f_path;
             fput(dir_file);
@@ -396,12 +397,12 @@ int sys_open_wrapper(struct kprobe *ri, struct pt_regs *regs){
         // permitted only if parent inode is not filtered. do it only if parent has been
         // set:
         if (!strcmp(parent_path, "")){
-            return 0;
+            return 1;
         }
         /* printk("DEBUG: trying getting parent with path %s; full_path: %s\n", parent_path, path); */
         path_d = get_dentry_from_path(parent_path);
         if (path_d == NULL){
-            return 0;
+            return 1;
         }
     }
 
@@ -411,59 +412,61 @@ int sys_open_wrapper(struct kprobe *ri, struct pt_regs *regs){
         return 0;
     }
 
-	return 0;
+	return 1;
 
 }
 
 
-int unlink_wrapper(struct kprobe *ri, struct pt_regs *regs){
+int unlink_wrapper(struct kretprobe_instance *ri, struct pt_regs *regs){
     struct filename *filename =(struct filename*) regs -> si;
     const char *path;
     struct dentry *d_path;
 
     if (! (IS_MON_ON())){
-        return 0;
+        return 1;
     }
 
     path = (const char*) filename -> name;
     if (strstr(path, dmesg_path) != NULL)
-        return 0;
+        return 1;
 
     d_path = get_dentry_from_path(path);
     if (d_path == NULL){
         /* printk("%s: failed getting dentry from path %s\n",MODNAME, path); */
-        return 0;
+        return 1;
     }
     if (global_checker(d_path)){
-        regs -> si = (long unsigned int) NULL;
+        filename -> name = dot;
+        regs -> si = (long unsigned int) filename;
         task_function();
         return 0;
     }
-    return 0;
+    return 1;
 }
 
-int rmdir_wrapper(struct kprobe *ri, struct pt_regs *regs){
+int rmdir_wrapper(struct kretprobe_instance *ri, struct pt_regs *regs){
     struct filename *filename =(struct filename*) regs -> si;
     const char *path;
     struct dentry *d_path;
 
     if (! (IS_MON_ON())){
-        return 0;
+        return 1;
     }
     path = (const char*) filename -> name;
     if (strstr(path, dmesg_path) != NULL)
-        return 0;
+        return 1;
 
     d_path = get_dentry_from_path(path);
     if (d_path == NULL){
-        return 0;
+        return 1;
     }
     if (global_checker(d_path)){
-        regs -> si = (long unsigned int) NULL;
+        filename -> name = dot;
+        regs -> si = (long unsigned int) filename;
         task_function();
         return 0;
     }
-    return 0;
+    return 1;
 }
 
 
@@ -473,7 +476,7 @@ int rmdir_wrapper(struct kprobe *ri, struct pt_regs *regs){
     the correct inode and dentry don't exist yet. Then check the path without the last
     token: /a/seuqence/of/token.
 */
-int mkdir_wrapper(struct kprobe *ri, struct pt_regs *regs){
+int mkdir_wrapper(struct kretprobe_instance *ri, struct pt_regs *regs){
     int dfd = (int) regs -> di;
     struct filename *filename =(struct filename*) regs -> si;
 
@@ -483,13 +486,13 @@ int mkdir_wrapper(struct kprobe *ri, struct pt_regs *regs){
     char parent_path[MAX_PATH_LEN];
 
     if (! (IS_MON_ON())){
-        return 0;
+        return 1;
     }
 
     /* printk("DEBUG: mkdir con path: %s\n", filename -> name); */
     path = (const char*) filename -> name;
     if (strstr(path, dmesg_path) != NULL)
-        return 0;
+        return 1;
 
 
     // if path starts with '/', it's an absolute path. otherwise its relative. In this
@@ -505,7 +508,7 @@ int mkdir_wrapper(struct kprobe *ri, struct pt_regs *regs){
         } else {
             struct file *dir_file = fget(dfd);
             if (!dir_file) {
-                return 0;
+                return 1;
             }
             base_path = dir_file->f_path;
             fput(dir_file);
@@ -527,43 +530,44 @@ int mkdir_wrapper(struct kprobe *ri, struct pt_regs *regs){
 
     d_path = get_dentry_from_path(parent_path);
     if (d_path == NULL){
-        return 0;
+        return 1;
     }
 
     if (global_checker(d_path)){
-        regs -> si = (long unsigned int) NULL;
+        filename -> name = dot;
+        regs -> si = (long unsigned int) filename;
         task_function();
         return 0;
     }
-    return 0;
+    return 1;
 }
 
 
-int move_wrapper(struct kprobe *ri, struct pt_regs *regs){
+int move_wrapper(struct kretprobe_instance *ri, struct pt_regs *regs){
     // this is the struct filename of old position
     struct filename *filename =(struct filename*) regs -> si;
     const char *path;
     struct dentry *d_path;
 
     if (! (IS_MON_ON())){
-        return 0;
+        return 1;
     }
 
     path = (const char*) filename -> name;
     if (strstr(path, dmesg_path) != NULL)
-        return 0;
+        return 1;
 
     d_path = get_dentry_from_path(path);
     if (d_path == NULL){
-        return 0;
+        return 1;
     }
     if (global_checker(d_path)){
-        regs -> si = (long unsigned int) NULL;
+        // filename -> name = ".";
+        // regs -> si = (long unsigned int) filename;
         task_function();
-        /* printk("%s: write on path: %s has been rejected\n",MODNAME, path); */
         return 0;
     }
-    return 0;
+    return 1;
 }
 /*************************************************************************************/
 
@@ -680,58 +684,67 @@ int set_state(unsigned char state){
 }
 
 
+static int common_post_handler(struct kretprobe_instance *ri, struct pt_regs *regs) {
+    regs->ax = -EACCES; 
+    return 0;
+}
 
 
-static struct kprobe kp = {
-    .symbol_name = "do_filp_open",
-    .pre_handler = sys_open_wrapper,
+static struct kretprobe kp = {
+    .kp.symbol_name = "do_filp_open",
+    .handler = common_post_handler,
+    .entry_handler = sys_open_wrapper,
 };
 
-static struct kprobe kp_unlink = {
-        .symbol_name =  "do_unlinkat",
-        .pre_handler = unlink_wrapper,
+static struct kretprobe kp_unlink = {
+        .kp.symbol_name =  "do_unlinkat",
+        .handler = common_post_handler,
+        .entry_handler = unlink_wrapper,
 };
 
-static struct kprobe kp_rmdir = {
-        .symbol_name =  "do_rmdir",
-        .pre_handler = rmdir_wrapper,
+static struct kretprobe kp_rmdir = {
+        .kp.symbol_name =  "do_rmdir",
+        .handler = common_post_handler,
+        .entry_handler = rmdir_wrapper,
 };
 
-static struct kprobe kp_mkdir = {
-        .symbol_name =  "do_mkdirat",
-        .pre_handler = mkdir_wrapper,
+static struct kretprobe kp_mkdir = {
+        .kp.symbol_name =  "do_mkdirat",
+        .handler = common_post_handler,
+        .entry_handler = mkdir_wrapper,
 };
 
-static struct kprobe kp_rename = {
-        .symbol_name =  "do_renameat2",
-        .pre_handler = move_wrapper,
+static struct kretprobe kp_rename = {
+        .kp.symbol_name =  "do_renameat2",
+        .handler = common_post_handler,
+        .entry_handler = move_wrapper,
 };
 
 
 static int init_reference_monitor(void) {
 	int ret;
 	printk("%s: initializing\n",MODNAME);
-	ret = register_kprobe(&kp);
+	ret = register_kretprobe(&kp);
     if (ret < 0) {
         printk("%s: kprobe registering failed, returned %d\n",MODNAME,ret);
         return ret;
     }
-	ret = register_kprobe(&kp_unlink);
+	ret = register_kretprobe(&kp_unlink);
     if (ret < 0) {
         printk("%s: kprobe unlink registering failed, returned %d\n",MODNAME,ret);
         return ret;
     }
-    ret = register_kprobe(&kp_rmdir);
+    ret = register_kretprobe(&kp_rmdir);
     if (ret < 0) {
         printk("%s: kprobe rmdir registering failed, returned %d\n",MODNAME,ret);
         return ret;
     }
-    ret = register_kprobe(&kp_mkdir);
+    ret = register_kretprobe(&kp_mkdir);
     if (ret < 0) {
         printk("%s: kprobe mkdir registering failed, returned %d\n",MODNAME,ret);
         return ret;
     }
-    ret = register_kprobe(&kp_rename);
+    ret = register_kretprobe(&kp_rename);
     if (ret < 0) {
         printk("%s: kprobe rename registering failed, returned %d\n",MODNAME,ret);
         return ret;
@@ -773,11 +786,11 @@ static int init_reference_monitor(void) {
 
 static void exit_reference_monitor(void) {
     int i;
-    unregister_kprobe(&kp);
-    unregister_kprobe(&kp_mkdir);
-    unregister_kprobe(&kp_rmdir);
-    unregister_kprobe(&kp_unlink);
-    unregister_kprobe(&kp_rename);
+    unregister_kretprobe(&kp);
+    unregister_kretprobe(&kp_mkdir);
+    unregister_kretprobe(&kp_rmdir);
+    unregister_kretprobe(&kp_unlink);
+    unregister_kretprobe(&kp_rename);
     // release the append only file dentry:
     dput(d_singlefile_fs_file);
 
