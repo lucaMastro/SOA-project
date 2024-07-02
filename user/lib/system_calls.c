@@ -2,10 +2,12 @@
 #include <unistd.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <errno.h>
 
 #include "./sys_call_numbers_header.h"
 #include "../../lib/max_parameters.h"
 #include "../../lib/reference_monitor_states.h"
+#include "../../lib/user_error_code.h"
 
 #define printf_red(format, ...)             \
     do {                                    \
@@ -21,9 +23,34 @@
         printf("\x1b[0m");                  \
     } while (0)
 
+
+void manage_error_msg(){
+    switch(errno){
+        case EGENERAL:
+            printf_red("Something went wrong. Check dmesg for more information.\n");
+            break;
+        case EWRONG_PW:
+            printf_red("Error: wrong password given.\n");
+            break;
+        case EINAPPROPRIATE_EUID:
+            printf_red("Error: inappropriate EUID.\n");
+            break;        
+        case EPATH:
+            printf_red("Error: invalid path.\n");
+            break;        
+        case EINVALID_MONITOR_STATE:
+            printf_red("Error: current monitor state doesn't permit reconfigurtion.\n");
+            break;        
+        case EINVALID_NEW_MONITOR_STATE:
+            printf_red("Error: invalid new monitor state.\n");
+            break;        
+    }
+}
+
+
 int get_paths(char *pass, int paths_num_to_retrieve){
 
-    printf("retrieving paths...\n");
+    printf("Retrieving paths...\n");
     char **paths;
     int i;
     int ret;
@@ -36,7 +63,7 @@ int get_paths(char *pass, int paths_num_to_retrieve){
 
     ret = syscall(SYS_GET, pass, paths, paths_num_to_retrieve);
     if (ret < 0){
-        printf_red("Error in get_paths systemcall\n");
+        manage_error_msg(ret);
         return -1;
     }
 
@@ -56,11 +83,11 @@ int add_path(char *pass, char *new_path){
     printf("adding path: %s\n", new_path);
 	int ret = syscall(SYS_ADD, pass, new_path);
     if (ret < 0){
-        printf_red("something went wrong adding path\n");
+        manage_error_msg(ret);
         return -1;
     }
 
-    printf_green("path added successfully\n");
+    printf_green("Path added successfully\n");
 }
 
 int rm_path(char *pass, char* path){
@@ -68,11 +95,11 @@ int rm_path(char *pass, char* path){
     printf("removing path: %s\n", path);
 	ret = syscall(SYS_RM, pass,path);
     if (ret < 0){
-        printf_red("something went wrong removing path\n");
+        manage_error_msg(ret);
         return -1;
     }
 
-    printf_green("path removed successfully\n");
+    printf_green("Path removed successfully\n");
 }
 
 
@@ -81,11 +108,11 @@ int change_monitor_password(char *old_pass, char *new_pass){
     printf("changing password...\n");
 	ret = syscall(SYS_CHANGE_PASS, old_pass, new_pass);
     if (ret < 0){
-        printf_red("something went wrong changing password\n");
+        manage_error_msg(ret);
         return ret;
     }
 
-    printf_green("password changed successfully\n");
+    printf_green("Password changed successfully\n");
     return 0;
 }
 
@@ -94,17 +121,17 @@ int change_monitor_state(char *pass, unsigned char new_state){
 
     if (new_state > (OFF | ON | RECOFF | RECON) ||
             new_state < 0){
-        printf_red("error: invalid monitor state given\n");
+        printf_red("Error: invalid new monitor state.\n");
         return -1;
     }
 
     printf("changing state...\n");
 	ret = syscall(SYS_CHANGE_STATE, pass, new_state);
     if (ret < 0){
-        printf_red("something went wrong changing state\n");
+        manage_error_msg(ret);
         return ret;
     }
 
-    printf_green("state changed successfully\n");
+    printf_green("State changed successfully\n");
     return 0;
 }

@@ -32,6 +32,7 @@
 
 #include "lib/reference_monitor.h"
 #include "../lib/module_lad.h"
+#include "../lib/user_error_code.h"
 
 #define MODNAME "Reference monitor"
 
@@ -580,20 +581,20 @@ int add_path(const char *new_path){
     // cantinue only if 2nd bit is 1
     if (! (IS_REC_ON())){
         printk("%s: cannot reconfigure monitor\n", MODNAME);
-        return -1;
+        return -EINVALID_MONITOR_STATE;
     }
 
     dentry = get_dentry_from_path(new_path);
     if (dentry == NULL){
         printk("%s: failed getting dentry from path %s\n", MODNAME, new_path);
-        return -1;
+        return -EPATH;
     }
 
     if (dentry -> d_inode == d_singlefile_fs_file -> d_inode ||
             dentry -> d_inode == d_singlefile_fs_file -> d_parent -> d_inode){
         printk("%s: cannot add %s in filtered list\n", MODNAME, new_path);
         dput(d_singlefile_fs_file -> d_parent);
-        return -1;
+        return -EPATH;
     }
     dput(d_singlefile_fs_file -> d_parent);
 
@@ -601,7 +602,7 @@ int add_path(const char *new_path){
     already_present_path = find_already_present_path(dentry);
     if (already_present_path >= 0){
         printk("%s: error: path already present: %s\n",MODNAME, full_path_from_dentry(dentry));
-        return -1;
+        return -EPATH;
     }
 
     reference_monitor.filtered_paths_len++;
@@ -626,19 +627,19 @@ int rm_path(const char *path_to_remove){
     // checking monitor state:
     if (!(IS_REC_ON())){
         printk("%s: cannot reconfigure monitor\n", MODNAME);
-        return -1;
+        return -EINVALID_MONITOR_STATE;
     }
 
     if (d_path_to_remove == NULL){
         printk("%s: error: retrieving dentry from %s\n",MODNAME, path_to_remove);
-        return -1;
+        return -EPATH;
     }
 
     // checking if already present:
     already_present_path = find_already_present_path(d_path_to_remove);
     if (already_present_path < 0){
         printk("%s: error: path not present\n",MODNAME);
-        return -1;
+        return -EPATH;
     }
 
     /*
@@ -674,7 +675,7 @@ int set_state(unsigned char state){
     // check if state is valid:
     if (state & INVALID_STATE){
         printk("%s error: invalid state given; state will not be changed\n", MODNAME);
-        return -1;
+        return -EINVALID_NEW_MONITOR_STATE;
     }
     // sanifying input: keep last 2 bits
     state &= 0x3;

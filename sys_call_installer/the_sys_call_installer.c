@@ -32,6 +32,7 @@
 #include "../lib/syscall_helper.h"
 #include "../reference-monitor-kprobes/lib/reference_monitor.h"
 #include "../lib/module_lad.h"
+#include "../lib/user_error_code.h"
 
 
 extern reference_monitor_t reference_monitor;
@@ -52,13 +53,21 @@ MODULE_PARM_DESC(installed_syscall, "Installed syscall entries");
 int check_password(char *pass_plaintext,ssize_t len){
     char digest[HASH_SIZE + 1];
     int ret;
+    // compute hash invoke kmalloc: BEWARE TO INVOKE OUTSIDE CRITICAL SECTIONS
     ret = compute_hash(pass_plaintext, len, digest);
     if (ret != 0){
         printk("%s: error computing hash\n", MODNAME);
         return -1;
     }
     digest[HASH_SIZE] = '\0';
-    return strcmp(digest, reference_monitor.hashed_pass);
+
+    /* ----------- CRITICAL SECTION ------------ */
+    spin_lock(&(reference_monitor.lock));
+    ret = strcmp(digest, reference_monitor.hashed_pass);
+    spin_unlock(&(reference_monitor.lock));
+    /* ----------- CRITICAL SECTION END ------------ */
+
+    return ret;
 }
 
 /* --------------------------------------------------------- */
@@ -75,15 +84,15 @@ __SYSCALL_DEFINEx(2, _add_path, char* __user, monitor_pass, char* __user, new_pa
     euid = current->cred->euid.val;
     if (CHECK_EUID && euid != 0)
     {
-        printk("%s: inappropriate effective euid: %d in change_monitor_password\n", MODNAME, euid);
-        return -1;
+        printk("%s: inappropriate effective euid: %d in add_path\n", MODNAME, euid);
+        return -EINAPPROPRIATE_EUID;
     }
 
     // this counts the '\0'. It has to be excluded in password check
     len = strnlen_user(monitor_pass, MAX_PASS_LEN);
     if (len > MAX_PASS_LEN){
         printk("DEBUG: strnlen returned len > MAX_PASS_LEN: %ld > %d\n", len, MAX_PASS_LEN);
-        return -1;
+        return -EWRONG_PW;
     }
     user_pass = (char*) kmalloc(sizeof(char) * len, GFP_KERNEL);
     if (user_pass == NULL){
@@ -98,40 +107,40 @@ __SYSCALL_DEFINEx(2, _add_path, char* __user, monitor_pass, char* __user, new_pa
     }
 
     /* checking password: */
-    spin_lock(&(reference_monitor.lock));
     ret = check_password(user_pass, len - 1);
     kfree(user_pass);
     if (ret != 0){
-	    spin_unlock(&(reference_monitor.lock));
         printk("%s: error: wrong monitor password in add_path.\n",MODNAME);
-        return -1;
+        return -EWRONG_PW;
     }
 
-    /* adding path */
+    // new_len
     len = strnlen_user(new_path, MAX_PATH_LEN);
     k_new_path = (char*) kmalloc(sizeof(char) * len, GFP_KERNEL);
     if (k_new_path == NULL){
-	    spin_unlock(&(reference_monitor.lock));
         printk("%s: error allocating buffer for pass digest\n", MODNAME);
         return -1;
     }
-
     ret = copy_from_user(k_new_path, new_path, len);
 	if(ret != 0) {
-	    spin_unlock(&(reference_monitor.lock));
         printk("%s: error: copy_from_user k_new_path\n",MODNAME);
         return -1;
     }
 
+    /* ----------- CRITICAL SECTION ------------ */
+    spin_lock(&(reference_monitor.lock));
+
+    /* adding path */
     ret = reference_monitor.add_path(k_new_path);
     kfree(k_new_path);
     if (ret < 0){
 	    spin_unlock(&(reference_monitor.lock));
-        printk("%s: error adding path\n",MODNAME);
-        return -2;
+        printk("%s: error adding path: %d\n",MODNAME);
+        return ret;
     }
-
     spin_unlock(&(reference_monitor.lock));
+    /* ----------- CRITICAL SECTION END ------------ */
+
     printk("%s: path added successfully\n",MODNAME);
     return 0;
 
@@ -141,7 +150,7 @@ static unsigned long sys_add_path = (unsigned long) __x64_sys_add_path;
 /* ----------------------------------------------*/
 
 /*
-    returns number of path delivered to user
+    returns number of path delivered to user: @TODO!!!
 */
 __SYSCALL_DEFINEx(3, _get_paths, char* __user, monitor_pass, char** __user, buffer, int, max_num_of_path_to_retrieve){
     int i, min, ret;
@@ -150,12 +159,15 @@ __SYSCALL_DEFINEx(3, _get_paths, char* __user, monitor_pass, char** __user, buff
     char *current_path;
     int euid;
 
+    int buf_size;
+    char **empty_buf;
+
     /* euid check: */
     euid = current->cred->euid.val;
     if (CHECK_EUID && euid != 0)
     {
-        printk("%s: inappropriate effective euid: %d in change_monitor_password\n", MODNAME, euid);
-        return -1;
+        printk("%s: inappropriate effective euid: %d in get_paths\n", MODNAME, euid);
+        return -EINAPPROPRIATE_EUID;
     }
 
     // this counts the '\0'. It has to be excluded in password check
@@ -177,27 +189,52 @@ __SYSCALL_DEFINEx(3, _get_paths, char* __user, monitor_pass, char** __user, buff
         return -1;
     }
 
-    spin_lock(&(reference_monitor.lock));
     /* checking password: */
     ret = check_password(user_pass, len - 1);
     if (ret != 0){
-	    spin_unlock(&(reference_monitor.lock));
         printk("%s: error: wrong monitor password in get_paths\n",MODNAME);
-        return -1;
+        return -EWRONG_PW;
     }
 
-    min = max_num_of_path_to_retrieve < reference_monitor.filtered_paths_len ? max_num_of_path_to_retrieve : reference_monitor.filtered_paths_len;
+    /* initializing buffer to keep as many path such as current num of path.
+        if meanwhile 
+            rm path occurs: this buffer will not be fullfilled 
+            add path occurs: this buffer will not keep all the paths
+    */
+    buf_size = reference_monitor.filtered_paths_len;
+    empty_buf = (char**) kmalloc(sizeof(char*) * buf_size, GFP_KERNEL);
+    if (empty_buf == NULL){
+        printk("%s: error allocating buffer for paths\n", MODNAME);
+        return -1;
+    }
+    for (i=0; i < buf_size; i++){
+        empty_buf[i] = (char*) kmalloc(sizeof(char) * MAX_PATH_LEN, GFP_KERNEL);
+        if (empty_buf[i] == NULL){
+            printk("%s: error allocating buffer[%d] for paths\n", MODNAME, i);
+            return -1;
+        }
+    }
+
+    /* ----------- CRITICAL SECTION ------------ */
+    spin_lock(&(reference_monitor.lock));
+    min = max_num_of_path_to_retrieve < buf_size ? max_num_of_path_to_retrieve : buf_size;
 
     for (i=0; i < min; i++){
         current_path = reference_monitor.get_path(i);
-        ret = copy_to_user(buffer[i], current_path, strlen(current_path));
+        snprintf(empty_buf[i], MAX_PATH_LEN, "%s", current_path);
+        kfree(current_path);
+    }
+    spin_unlock(&(reference_monitor.lock));
+    /* ----------- CRITICAL SECTION END ------------ */
+
+    // need now to copy_to_user
+    for (i=0; i < min; i++){
+        ret = copy_to_user(buffer[i], empty_buf[i], strlen(empty_buf[i]));
         if (ret > 0){
             printk("%s: not fully deliver %s\n", MODNAME, current_path);
         }
-        kfree(current_path);
     }
-
-    spin_unlock(&(reference_monitor.lock));
+    kfree(empty_buf);
     return min;
 
 }
@@ -217,8 +254,8 @@ __SYSCALL_DEFINEx(2, _rm_path, char* __user, monitor_pass, char* __user, path_to
     euid = current->cred->euid.val;
     if (CHECK_EUID && euid != 0)
     {
-        printk("%s: inappropriate effective euid: %d in change_monitor_password\n", MODNAME, euid);
-        return -1;
+        printk("%s: inappropriate effective euid: %d in rm_path,\n", MODNAME, euid);
+        return -EINAPPROPRIATE_EUID;
     }
 
     // this counts the '\0'. It has to be excluded in password check
@@ -240,39 +277,40 @@ __SYSCALL_DEFINEx(2, _rm_path, char* __user, monitor_pass, char* __user, path_to
     }
 
     /* checking password: */
-	spin_lock(&(reference_monitor.lock));
     ret = check_password(user_pass, len - 1);
     kfree(user_pass);
     if (ret != 0){
-	    spin_unlock(&(reference_monitor.lock));
         printk("%s: error: wrong monitor password in rm_paths\n",MODNAME);
-        return -1;
+        return -EWRONG_PW;
     }
-    /* removing path */
+
     len = strnlen_user(path_to_remove, MAX_PATH_LEN);
     k_path_to_remove = (char*) kmalloc(sizeof(char) * len, GFP_KERNEL);
     if (k_path_to_remove == NULL){
-	    spin_unlock(&(reference_monitor.lock));
         printk("%s: error allocating buffer for path to remove\n", MODNAME);
         return -1;
     }
-
+    
     ret = copy_from_user(k_path_to_remove, path_to_remove, len);
 	if(ret != 0) {
-	    spin_unlock(&(reference_monitor.lock));
         printk("%s: error: copy_from_user k_path_to_remove\n",MODNAME);
         return -1;
     }
 
+    
+    /* ----------- CRITICAL SECTION ------------ */
+	spin_lock(&(reference_monitor.lock));
+     /* removing path */
     ret = reference_monitor.rm_path(k_path_to_remove);
     kfree(k_path_to_remove);
     if (ret < 0){
 	    spin_unlock(&(reference_monitor.lock));
         printk("%s: error removing path\n",MODNAME);
-        return -2;
+        return ret;
     }
-
     spin_unlock(&(reference_monitor.lock));
+    /* ----------- CRITICAL SECTION END ------------ */
+
     printk("%s: path removed successfully\n",MODNAME);
     return 0;
 
@@ -287,6 +325,7 @@ __SYSCALL_DEFINEx(2, _change_monitor_password, char*, old_pass, char*, new_pass)
     int ret;
     char *old_pass_k;
     char *new_pass_k;
+    char new_hash[HASH_SIZE];
     ssize_t len;
     int euid;
 
@@ -295,7 +334,7 @@ __SYSCALL_DEFINEx(2, _change_monitor_password, char*, old_pass, char*, new_pass)
     if (CHECK_EUID && euid != 0)
     {
         printk("%s: inappropriate effective euid: %d in change_monitor_password\n", MODNAME, euid);
-        return -1;
+        return -EINAPPROPRIATE_EUID;
     }
 
     // this counts the '\0'. It has to be excluded in password check
@@ -316,40 +355,47 @@ __SYSCALL_DEFINEx(2, _change_monitor_password, char*, old_pass, char*, new_pass)
         return -1;
     }
 
-    /* checking password: */
-	spin_lock(&(reference_monitor.lock));
-    ret = check_password(old_pass_k, len - 1);
-    kfree(old_pass_k);
-    if (ret != 0){
-	    spin_unlock(&(reference_monitor.lock));
-        printk("%s: error: wrong monitor password in change_password\n",MODNAME);
+    new_pass_k = (char*) kmalloc(sizeof(char) * len, GFP_KERNEL);
+    if (new_pass_k == NULL){
+        printk("%s: error allocating buffer for pass digest\n", MODNAME);
         return -1;
     }
-
     // this counts the '\0'. It has to be excluded in password check
     len = strnlen_user(new_pass, MAX_PASS_LEN);
     if (len > MAX_PASS_LEN){
         printk("DEBUG: strnlen returned len > MAX_PASS_LEN: %ld > %d\n", len, MAX_PASS_LEN);
         return -1;
     }
-    new_pass_k = (char*) kmalloc(sizeof(char) * len, GFP_KERNEL);
-    if (new_pass_k == NULL){
-	    spin_unlock(&(reference_monitor.lock));
-        printk("%s: error allocating buffer for pass digest\n", MODNAME);
-        return -1;
-    }
 
     ret = copy_from_user(new_pass_k, new_pass, len);
 	if(ret != 0) {
-	    spin_unlock(&(reference_monitor.lock));
         printk("%s: error: copy_from_user compare passwd\n",MODNAME);
         return -1;
     }
 
-    /* updating password: */
-    ret = compute_hash(new_pass_k, len - 1, reference_monitor.hashed_pass);
+     /* checking password: */
+    ret = check_password(old_pass_k, len - 1);
+    kfree(old_pass_k);   
+    if (ret != 0){	    
+        printk("%s: error: wrong monitor password in change_monitor_password\n",MODNAME);
+        return -EWRONG_PW;
+    }
+
+    ret = compute_hash(new_pass_k, len - 1, new_hash);
     kfree(new_pass_k);
+    if (ret != 0){	    
+        printk("%s: error: hashing new password\n",MODNAME);
+        return -1;
+    }
+
+    /* ----------- CRITICAL SECTION ------------ */
+	spin_lock(&(reference_monitor.lock));
+    /* updating password: */
+    memcpy(reference_monitor.hashed_pass, new_hash, HASH_SIZE);
 	spin_unlock(&(reference_monitor.lock));
+    /* ----------- CRITICAL SECTION END ------------ */
+
+
     printk("%s: password changed successfully\n", MODNAME);
 
     return 0;
@@ -369,8 +415,8 @@ __SYSCALL_DEFINEx(2, _change_monitor_state, char* __user, monitor_pass, unsigned
     euid = current->cred->euid.val;
     if (CHECK_EUID && euid != 0)
     {
-        printk("%s: inappropriate effective euid: %d in get_paths\n", MODNAME, euid);
-        return -1;
+        printk("%s: inappropriate effective euid: %d in change_monitor_state\n", MODNAME, euid);
+        return -EINAPPROPRIATE_EUID;
     }
     // this counts the '\0'. It has to be excluded in password check
     len = strnlen_user(monitor_pass, MAX_PASS_LEN);
@@ -391,22 +437,23 @@ __SYSCALL_DEFINEx(2, _change_monitor_state, char* __user, monitor_pass, unsigned
     }
 
     /* checking password: */
-    spin_lock(&(reference_monitor.lock));
     ret = check_password(user_pass, len - 1);
     kfree(user_pass);
     if (ret != 0){
-	    spin_unlock(&(reference_monitor.lock));
-        printk("%s: error: wrong monitor password in get_paths\n",MODNAME);
-        return -1;
+        printk("%s: error: wrong monitor password in change_monitor_state\n",MODNAME);
+        return -EWRONG_PW;
     }
 
-    if (reference_monitor.set_state(new_state) < 0){
+    /* ----------- CRITICAL SECTION ------------ */
+    spin_lock(&(reference_monitor.lock));
+    ret = reference_monitor.set_state(new_state);
+    if (ret < 0){
         spin_unlock(&(reference_monitor.lock));
         printk("%s error: something went wrong changing state\n", MODNAME);
-        return -1;
+        return ret;
     }
-
     spin_unlock(&(reference_monitor.lock));
+    /* ----------- CRITICAL SECTION END ------------ */
     return 0;
 
 }
