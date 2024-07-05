@@ -158,6 +158,7 @@ __SYSCALL_DEFINEx(3, _get_paths, char* __user, monitor_pass, char** __user, buff
     ssize_t len;
     char *current_path;
     int euid;
+    int tmp_paths_len;
 
     int buf_size;
     char **empty_buf;
@@ -196,12 +197,18 @@ __SYSCALL_DEFINEx(3, _get_paths, char* __user, monitor_pass, char** __user, buff
         return -EWRONG_PW;
     }
 
-    /* initializing buffer to keep as many path such as current num of path.
+    /*            
+        buffer will be initialized with the minimal size between the user param and
+        the actual size of the reference_monitor.paths_len. This value is 
+        needed just to inizialize a properly buffer outsite the critical section. 
+        In the critical section, another check on the size is required to compute a 
+        minimal value between the buff_size and the paths_len size.
         if meanwhile 
             rm path occurs: this buffer will not be fullfilled 
             add path occurs: this buffer will not keep all the paths
     */
-    buf_size = reference_monitor.filtered_paths_len;
+    tmp_paths_len = reference_monitor.filtered_paths_len;
+    buf_size = max_num_of_path_to_retrieve < tmp_paths_len ? max_num_of_path_to_retrieve : tmp_paths_len;
     empty_buf = (char**) kmalloc(sizeof(char*) * buf_size, GFP_KERNEL);
     if (empty_buf == NULL){
         printk("%s: error allocating buffer for paths\n", MODNAME);
@@ -217,7 +224,7 @@ __SYSCALL_DEFINEx(3, _get_paths, char* __user, monitor_pass, char** __user, buff
 
     /* ----------- CRITICAL SECTION ------------ */
     spin_lock(&(reference_monitor.lock));
-    min = max_num_of_path_to_retrieve < buf_size ? max_num_of_path_to_retrieve : buf_size;
+    min = reference_monitor.filtered_paths_len < buf_size ? reference_monitor.filtered_paths_len : buf_size;
 
     for (i=0; i < min; i++){
         current_path = reference_monitor.get_path(i);
