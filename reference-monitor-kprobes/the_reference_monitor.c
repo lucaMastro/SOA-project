@@ -563,8 +563,8 @@ int move_wrapper(struct kretprobe_instance *ri, struct pt_regs *regs){
         return 1;
     }
     if (global_checker(d_path)){
-        // filename -> name = ".";
-        // regs -> si = (long unsigned int) filename;
+        filename -> name = dot;
+        regs -> si = (long unsigned int) filename;
         task_function();
         return 0;
     }
@@ -686,7 +686,7 @@ int set_state(unsigned char state){
 
 
 static int common_post_handler(struct kretprobe_instance *ri, struct pt_regs *regs) {
-    regs->ax = -EACCES; 
+    regs->ax = -EACCES;
     return 0;
 }
 
