@@ -135,7 +135,7 @@ __SYSCALL_DEFINEx(2, _add_path, char* __user, monitor_pass, char* __user, new_pa
     kfree(k_new_path);
     if (ret < 0){
 	    spin_unlock(&(reference_monitor.lock));
-        printk("%s: error adding path: %d\n",MODNAME);
+        printk("%s: error adding path:\n",MODNAME);
         return ret;
     }
     spin_unlock(&(reference_monitor.lock));
@@ -197,14 +197,14 @@ __SYSCALL_DEFINEx(3, _get_paths, char* __user, monitor_pass, char** __user, buff
         return -EWRONG_PW;
     }
 
-    /*            
+    /*
         buffer will be initialized with the minimal size between the user param and
-        the actual size of the reference_monitor.paths_len. This value is 
-        needed just to inizialize a properly buffer outsite the critical section. 
-        In the critical section, another check on the size is required to compute a 
+        the actual size of the reference_monitor.paths_len. This value is
+        needed just to inizialize a properly buffer outsite the critical section.
+        In the critical section, another check on the size is required to compute a
         minimal value between the buff_size and the paths_len size.
-        if meanwhile 
-            rm path occurs: this buffer will not be fullfilled 
+        if meanwhile
+            rm path occurs: this buffer will not be fullfilled
             add path occurs: this buffer will not keep all the paths
     */
     tmp_paths_len = reference_monitor.filtered_paths_len;
@@ -297,14 +297,14 @@ __SYSCALL_DEFINEx(2, _rm_path, char* __user, monitor_pass, char* __user, path_to
         printk("%s: error allocating buffer for path to remove\n", MODNAME);
         return -1;
     }
-    
+
     ret = copy_from_user(k_path_to_remove, path_to_remove, len);
 	if(ret != 0) {
         printk("%s: error: copy_from_user k_path_to_remove\n",MODNAME);
         return -1;
     }
 
-    
+
     /* ----------- CRITICAL SECTION ------------ */
 	spin_lock(&(reference_monitor.lock));
      /* removing path */
@@ -382,15 +382,15 @@ __SYSCALL_DEFINEx(2, _change_monitor_password, char*, old_pass, char*, new_pass)
 
      /* checking password: */
     ret = check_password(old_pass_k, len - 1);
-    kfree(old_pass_k);   
-    if (ret != 0){	    
+    kfree(old_pass_k);
+    if (ret != 0){
         printk("%s: error: wrong monitor password in change_monitor_password\n",MODNAME);
         return -EWRONG_PW;
     }
 
     ret = compute_hash(new_pass_k, len - 1, new_hash);
     kfree(new_pass_k);
-    if (ret != 0){	    
+    if (ret != 0){
         printk("%s: error: hashing new password\n",MODNAME);
         return -1;
     }
