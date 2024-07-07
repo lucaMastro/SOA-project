@@ -150,7 +150,7 @@ static unsigned long sys_add_path = (unsigned long) __x64_sys_add_path;
 /* ----------------------------------------------*/
 
 /*
-    returns number of path delivered to user: @TODO!!!
+    returns number of path delivered to user
 */
 __SYSCALL_DEFINEx(3, _get_paths, char* __user, monitor_pass, char** __user, buffer, int, max_num_of_path_to_retrieve){
     int i, min, ret;
