@@ -437,7 +437,7 @@ int unlink_wrapper(struct kretprobe_instance *ri, struct pt_regs *regs){
         return 1;
     }
     if (global_checker(d_path)){
-        filename -> name = dot;
+        memcpy((char *)filename->name, dot, strlen(dot) + 1);
         regs -> si = (long unsigned int) filename;
         task_function();
         return 0;
@@ -462,7 +462,7 @@ int rmdir_wrapper(struct kretprobe_instance *ri, struct pt_regs *regs){
         return 1;
     }
     if (global_checker(d_path)){
-        filename -> name = dot;
+        memcpy((char *)filename->name, dot, strlen(dot) + 1);
         regs -> si = (long unsigned int) filename;
         task_function();
         return 0;
@@ -535,7 +535,7 @@ int mkdir_wrapper(struct kretprobe_instance *ri, struct pt_regs *regs){
     }
 
     if (global_checker(d_path)){
-        filename -> name = dot;
+        memcpy((char *)filename->name, dot, strlen(dot) + 1);
         regs -> si = (long unsigned int) filename;
         task_function();
         return 0;
@@ -563,7 +563,7 @@ int move_wrapper(struct kretprobe_instance *ri, struct pt_regs *regs){
         return 1;
     }
     if (global_checker(d_path)){
-        filename -> name = dot;
+        memcpy((char *)filename->name, dot, strlen(dot) + 1);
         regs -> si = (long unsigned int) filename;
         task_function();
         return 0;
