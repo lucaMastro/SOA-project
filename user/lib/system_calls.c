@@ -23,6 +23,13 @@
         printf("\x1b[0m");                  \
     } while (0)
 
+#define printf_debug(format, ...)           \
+    do {                                    \
+        printf("\x1b[33m");                 \
+        printf(format, ##__VA_ARGS__);      \
+        printf("\x1b[0m");                  \
+    } while (0)
+
 
 void manage_error_msg(){
     switch(errno){

@@ -159,9 +159,10 @@ __SYSCALL_DEFINEx(3, _get_paths, char* __user, monitor_pass, char** __user, buff
     char *current_path;
     int euid;
     int tmp_paths_len;
+    char __user * tmp;
 
     int buf_size;
-    char **empty_buf;
+    char **paths_snapshot;
 
     /* euid check: */
     euid = current->cred->euid.val;
@@ -209,14 +210,14 @@ __SYSCALL_DEFINEx(3, _get_paths, char* __user, monitor_pass, char** __user, buff
     */
     tmp_paths_len = reference_monitor.filtered_paths_len;
     buf_size = max_num_of_path_to_retrieve < tmp_paths_len ? max_num_of_path_to_retrieve : tmp_paths_len;
-    empty_buf = (char**) kmalloc(sizeof(char*) * buf_size, GFP_KERNEL);
-    if (empty_buf == NULL){
+    paths_snapshot = (char**) kmalloc(sizeof(char*) * buf_size, GFP_KERNEL);
+    if (paths_snapshot == NULL){
         printk("%s: error allocating buffer for paths\n", MODNAME);
         return -1;
     }
     for (i=0; i < buf_size; i++){
-        empty_buf[i] = (char*) kmalloc(sizeof(char) * MAX_PATH_LEN, GFP_KERNEL);
-        if (empty_buf[i] == NULL){
+        paths_snapshot[i] = (char*) kmalloc(sizeof(char) * MAX_PATH_LEN, GFP_KERNEL);
+        if (paths_snapshot[i] == NULL){
             printk("%s: error allocating buffer[%d] for paths\n", MODNAME, i);
             return -1;
         }
@@ -228,7 +229,7 @@ __SYSCALL_DEFINEx(3, _get_paths, char* __user, monitor_pass, char** __user, buff
 
     for (i=0; i < min; i++){
         current_path = reference_monitor.get_path(i);
-        snprintf(empty_buf[i], MAX_PATH_LEN, "%s", current_path);
+        snprintf(paths_snapshot[i], MAX_PATH_LEN, "%s", current_path);
         kfree(current_path);
     }
     spin_unlock(&(reference_monitor.lock));
@@ -236,12 +237,18 @@ __SYSCALL_DEFINEx(3, _get_paths, char* __user, monitor_pass, char** __user, buff
 
     // need now to copy_to_user
     for (i=0; i < min; i++){
-        ret = copy_to_user(buffer[i], empty_buf[i], strlen(empty_buf[i]));
+        current_path = paths_snapshot[i];
+
+        ret = get_user(tmp, buffer + i);
+        if (ret > 0){
+            printk("%s: error retrieving destination user address for %s\n", MODNAME, current_path);
+        }
+        ret = copy_to_user(tmp, current_path, strlen(current_path));
         if (ret > 0){
             printk("%s: not fully deliver %s\n", MODNAME, current_path);
         }
     }
-    kfree(empty_buf);
+    kfree(paths_snapshot);
     return min;
 
 }
